@@ -9,3 +9,4 @@
 /config/master.key
 *.swp
 .DS_Store
+/data_sync/.venv/

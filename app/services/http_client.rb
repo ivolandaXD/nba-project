@@ -7,7 +7,8 @@ module HttpClient
     Errno::ETIMEDOUT,
     Errno::ECONNRESET,
     SocketError,
-    EOFError
+    EOFError,
+    *(defined?(Net::WriteTimeout) ? [Net::WriteTimeout] : [])
   ].freeze
 
   DEFAULT_ATTEMPTS = 3

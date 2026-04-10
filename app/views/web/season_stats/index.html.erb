@@ -1,0 +1,228 @@
+<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+  <div>
+    <h1 class="text-2xl font-bold text-slate-800">Estatísticas da temporada</h1>
+    <p class="text-slate-600 text-sm mt-1">Temporada <strong><%= @season %></strong> · fonte NBA (playercareerstats)</p>
+  </div>
+  <% if current_user.admin? %>
+    <div class="flex flex-col sm:flex-row gap-2 shrink-0">
+      <%= button_to "Atualizar até #{@sync_limit} jogadores", sync_season_stats_path, method: :post,
+          params: { limit: @sync_limit, page: @stats_page, per: @per_page, q: @q, sort: @sort, dir: @dir },
+          class: 'bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium py-2 px-2 rounded shadow',
+          data: { confirm: "Sincronizar estatísticas da temporada para até #{@sync_limit} jogadores com NBA ID? (pode demorar e depender da API da NBA.)" } %>
+      <%= button_to "Sincronizar todos (#{@nba_players_count} com NBA ID)", sync_season_stats_path, method: :post,
+          params: { all: 1, page: @stats_page, per: @per_page, q: @q, sort: @sort, dir: @dir },
+          class: 'bg-amber-700 hover:bg-amber-600 text-white text-sm font-medium py-2 px-2 rounded shadow',
+          data: { confirm: "Enfileirar sincronização para todos os #{@nba_players_count} jogadores com NBA ID? Leva vários minutos em segundo plano; atualize a página depois. Só entram jogadores já cadastrados no app com nba_player_id." } %>
+    </div>
+  <% end %>
+</div>
+
+<% if current_user.admin? %>
+  <% if @nba_players_count.zero? %>
+    <div class="rounded-lg border border-rose-200 bg-rose-50/90 text-rose-950 text-sm px-3 py-2 mb-4">
+      Nenhum jogador no banco tem <code class="bg-white/80 px-1 rounded text-xs">nba_player_id</code>, então a sincronização de temporada não atualiza ninguém.
+      No terminal rode primeiro <code class="bg-white/80 px-1 rounded text-xs">bin/rails nba:sync_league_players</code> (API <code class="bg-white/80 px-1 rounded text-xs">commonallplayers</code>),
+      depois <code class="bg-white/80 px-1 rounded text-xs">bin/rails nba:sync_season_stats</code> ou <code class="bg-white/80 px-1 rounded text-xs">bin/rails nba:sync_season_full</code> para os dois passos.
+    </div>
+  <% end %>
+  <p class="text-xs text-slate-500 mb-4">
+    <strong>Lote:</strong> usa <code class="bg-slate-100 px-1 rounded">NBA_SEASON_SYNC_BATCH</code> (env); repita para cobrir o elenco sem travar o navegador.
+    <strong class="ml-1">Todos:</strong> job em segundo plano (dev: <code class="bg-slate-100 px-1 rounded">async</code>) ou terminal <code class="bg-slate-100 px-1 rounded">bin/rails nba:sync_season_stats</code>.
+    <strong class="ml-1">IDs:</strong> sem <code class="bg-slate-100 px-1 rounded">nba_player_id</code> use <code class="bg-slate-100 px-1 rounded">nba:sync_league_players</code> (liga + vínculo nome/time).
+  </p>
+<% end %>
+
+<% if @players_without_sync.any? %>
+  <div class="rounded-lg border border-amber-200 bg-amber-50/80 text-amber-950 text-sm px-3 py-2 mb-4">
+    <strong><%= @players_without_sync.count %></strong> jogador(es) com NBA ID ainda sem linha nesta temporada no banco.
+    <% if current_user.admin? %>Use o botão acima para importar.<% end %>
+  </div>
+<% end %>
+
+<% ss_base = { q: @q.presence, per: @per_page, sort: @sort, dir: @dir } %>
+
+<%= form_with url: season_stats_path, method: :get, local: true, class: 'flex flex-wrap items-end gap-2 mb-3' do %>
+  <%= hidden_field_tag :sort, @sort %>
+  <%= hidden_field_tag :dir, @dir %>
+  <%= hidden_field_tag :per, @per_page %>
+  <%= hidden_field_tag :page, 1 %>
+  <div class="flex-1 min-w-[12rem]">
+    <label for="season_stats_q" class="block text-xs font-medium text-slate-600 mb-1">Buscar (jogador ou time)</label>
+    <%= text_field_tag :q, @q, id: 'season_stats_q', placeholder: 'Nome ou abreviação…', class: 'w-full max-w-md rounded border border-slate-300 px-2 py-1.5 text-sm' %>
+  </div>
+  <div>
+    <%= submit_tag 'Buscar', class: 'bg-slate-700 hover:bg-slate-600 text-white text-sm py-1.5 px-3 rounded cursor-pointer' %>
+    <% if @q.present? %>
+      <%= link_to 'Limpar', season_stats_path(per: @per_page), class: 'text-sm text-slate-600 hover:underline ml-2' %>
+    <% end %>
+  </div>
+<% end %>
+
+<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3 text-sm text-slate-600">
+  <p class="tabular-nums">
+    <% if @stats_total.positive? %>
+      <% first_row = (@stats_page - 1) * @per_page + 1 %>
+      <% last_row = [@stats_page * @per_page, @stats_total].min %>
+      Mostrando <strong><%= first_row %>–<%= last_row %></strong> de <strong><%= @stats_total %></strong>
+      · página <strong><%= @stats_page %></strong> de <strong><%= @stats_total_pages %></strong>
+    <% else %>
+      Nenhuma linha nesta temporada.
+    <% end %>
+  </p>
+  <%= form_with url: season_stats_path, method: :get, local: true, class: 'flex items-center gap-2' do %>
+    <%= hidden_field_tag :q, @q %>
+    <%= hidden_field_tag :sort, @sort %>
+    <%= hidden_field_tag :dir, @dir %>
+    <%= hidden_field_tag :page, 1 %>
+    <label for="per" class="text-slate-500 whitespace-nowrap">Por página</label>
+    <%= select_tag :per,
+        options_for_select([10, 15, 20], @per_page),
+        id: 'per',
+        class: 'rounded border border-slate-300 px-2 py-1 text-slate-800 bg-white',
+        onchange: 'this.form.submit()' %>
+  <% end %>
+</div>
+
+<% if @stats_total_pages > 1 %>
+  <nav class="flex flex-wrap items-center gap-2 mb-3 text-sm" aria-label="Paginação">
+    <% base = ss_base %>
+    <% if @stats_page > 1 %>
+      <%= link_to '← Anterior', season_stats_path(base.merge(page: @stats_page - 1)), class: 'text-orange-700 hover:underline font-medium' %>
+    <% else %>
+      <span class="text-slate-400">← Anterior</span>
+    <% end %>
+    <% if @stats_page < @stats_total_pages %>
+      <%= link_to 'Próxima →', season_stats_path(base.merge(page: @stats_page + 1)), class: 'text-orange-700 hover:underline font-medium' %>
+    <% else %>
+      <span class="text-slate-400">Próxima →</span>
+    <% end %>
+  </nav>
+<% end %>
+
+<% if policy(:season_stats).predict? %>
+  <div class="rounded-xl border border-violet-200 bg-violet-50/40 p-4 shadow-sm mb-6">
+    <h2 class="text-lg font-semibold text-violet-950 mb-1">Previsão com IA</h2>
+    <p class="text-sm text-slate-600 mb-2">
+      Nesta página a tabela já tem <strong>busca</strong> e <strong>ordenação por coluna</strong>. O formulário de análise e contexto manual ficam na
+      <%= link_to 'Central de IA', ai_hub_path, class: 'font-semibold text-violet-800 underline' %>.
+      Requer <code class="bg-white/80 px-1 rounded text-xs">OPENAI_API_KEY</code> no servidor.
+    </p>
+  </div>
+<% end %>
+
+<div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+  <table class="min-w-full text-sm">
+    <thead class="bg-slate-100 text-slate-700 text-left">
+      <tr>
+        <th class="px-2 py-2 font-semibold">
+          <%= season_stats_sort_link 'Jogador', :player, current_sort: @sort, current_dir: @dir, q: @q, per: @per_page, page: @stats_page %>
+        </th>
+        <th class="px-2 py-2 font-semibold">
+          <%= season_stats_sort_link 'Time', :team, current_sort: @sort, current_dir: @dir, q: @q, per: @per_page, page: @stats_page %>
+        </th>
+        <th class="px-2 py-2 font-semibold text-right">
+          <%= season_stats_sort_link 'GP', :gp, current_sort: @sort, current_dir: @dir, q: @q, per: @per_page, page: @stats_page %>
+        </th>
+        <th class="px-2 py-2 font-semibold text-right">
+          <%= season_stats_sort_link 'MIN', :min, current_sort: @sort, current_dir: @dir, q: @q, per: @per_page, page: @stats_page %>
+        </th>
+        <th class="px-2 py-2 font-semibold text-right">
+          <%= season_stats_sort_link 'PTS', :pts, current_sort: @sort, current_dir: @dir, q: @q, per: @per_page, page: @stats_page %>
+        </th>
+        <th class="px-2 py-2 font-semibold text-right">
+          <%= season_stats_sort_link 'REB', :reb, current_sort: @sort, current_dir: @dir, q: @q, per: @per_page, page: @stats_page %>
+        </th>
+        <th class="px-2 py-2 font-semibold text-right">
+          <%= season_stats_sort_link 'AST', :ast, current_sort: @sort, current_dir: @dir, q: @q, per: @per_page, page: @stats_page %>
+        </th>
+        <th class="px-2 py-2 font-semibold text-right">
+          <%= season_stats_sort_link 'STL', :stl, current_sort: @sort, current_dir: @dir, q: @q, per: @per_page, page: @stats_page %>
+        </th>
+        <th class="px-2 py-2 font-semibold text-right">
+          <%= season_stats_sort_link 'BLK', :blk, current_sort: @sort, current_dir: @dir, q: @q, per: @per_page, page: @stats_page %>
+        </th>
+        <th class="px-2 py-2 font-semibold text-right">
+          <%= season_stats_sort_link 'TOV', :tov, current_sort: @sort, current_dir: @dir, q: @q, per: @per_page, page: @stats_page %>
+        </th>
+        <th class="px-2 py-2 font-semibold text-right" title="Field goals made / game">
+          <%= season_stats_sort_link 'FGM', :fgm, current_sort: @sort, current_dir: @dir, q: @q, per: @per_page, page: @stats_page %>
+        </th>
+        <th class="px-2 py-2 font-semibold text-right" title="Field goal attempts / game">
+          <%= season_stats_sort_link 'FGA', :fga, current_sort: @sort, current_dir: @dir, q: @q, per: @per_page, page: @stats_page %>
+        </th>
+        <th class="px-2 py-2 font-semibold text-right" title="Three-pointers made / game">
+          <%= season_stats_sort_link '3PM', :fg3m, current_sort: @sort, current_dir: @dir, q: @q, per: @per_page, page: @stats_page %>
+        </th>
+        <th class="px-2 py-2 font-semibold text-right" title="Three-point attempts / game">
+          <%= season_stats_sort_link '3PA', :fg3a, current_sort: @sort, current_dir: @dir, q: @q, per: @per_page, page: @stats_page %>
+        </th>
+        <th class="px-2 py-2 font-semibold text-right">
+          <%= season_stats_sort_link 'FG%', :fg_pct, current_sort: @sort, current_dir: @dir, q: @q, per: @per_page, page: @stats_page %>
+        </th>
+        <th class="px-2 py-2 font-semibold text-right">
+          <%= season_stats_sort_link '3P%', :fg3_pct, current_sort: @sort, current_dir: @dir, q: @q, per: @per_page, page: @stats_page %>
+        </th>
+        <th class="px-2 py-2 font-semibold text-right">
+          <%= season_stats_sort_link 'FT%', :ft_pct, current_sort: @sort, current_dir: @dir, q: @q, per: @per_page, page: @stats_page %>
+        </th>
+        <th class="px-2 py-2 font-semibold text-left">
+          <%= season_stats_sort_link 'Atualizado', :synced_at, current_sort: @sort, current_dir: @dir, q: @q, per: @per_page, page: @stats_page %>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @stats.each do |s| %>
+        <tr class="border-t border-slate-100 hover:bg-slate-50/80">
+          <td class="px-2 py-2 font-medium text-slate-900">
+            <%= link_to s.player.name, player_path(s.player), class: 'text-orange-700 hover:underline' %>
+          </td>
+          <td class="px-2 py-2"><%= s.team_abbr.presence || s.player.team || '—' %></td>
+          <td class="px-2 py-2 text-right tabular-nums"><%= s.gp %></td>
+          <td class="px-2 py-2 text-right tabular-nums"><%= number_with_precision(s.min, precision: 1) %></td>
+          <td class="px-2 py-2 text-right tabular-nums font-medium"><%= number_with_precision(s.pts, precision: 1) %></td>
+          <td class="px-2 py-2 text-right tabular-nums"><%= number_with_precision(s.reb, precision: 1) %></td>
+          <td class="px-2 py-2 text-right tabular-nums"><%= number_with_precision(s.ast, precision: 1) %></td>
+          <td class="px-2 py-2 text-right tabular-nums"><%= number_with_precision(s.stl, precision: 1) %></td>
+          <td class="px-2 py-2 text-right tabular-nums"><%= number_with_precision(s.blk, precision: 1) %></td>
+          <td class="px-2 py-2 text-right tabular-nums"><%= number_with_precision(s.tov, precision: 1) %></td>
+          <td class="px-2 py-2 text-right tabular-nums"><%= s.fgm.nil? ? '—' : number_with_precision(s.fgm, precision: 1) %></td>
+          <td class="px-2 py-2 text-right tabular-nums"><%= s.fga.nil? ? '—' : number_with_precision(s.fga, precision: 1) %></td>
+          <td class="px-2 py-2 text-right tabular-nums"><%= s.fg3m.nil? ? '—' : number_with_precision(s.fg3m, precision: 1) %></td>
+          <td class="px-2 py-2 text-right tabular-nums"><%= s.fg3a.nil? ? '—' : number_with_precision(s.fg3a, precision: 1) %></td>
+          <td class="px-2 py-2 text-right tabular-nums"><%= pct_cell(s.fg_pct) %></td>
+          <td class="px-2 py-2 text-right tabular-nums"><%= pct_cell(s.fg3_pct) %></td>
+          <td class="px-2 py-2 text-right tabular-nums"><%= pct_cell(s.ft_pct) %></td>
+          <td class="px-2 py-2 text-slate-500 text-xs"><%= s.synced_at&.strftime('%d/%m %H:%M') || '—' %></td>
+        </tr>
+      <% end %>
+      <% if @stats.empty? %>
+        <tr>
+          <td colspan="18" class="px-2 py-6 text-center text-slate-500">
+            <% if @q.present? %>
+              Nenhum resultado para “<%= @q %>”. <%= link_to 'Limpar busca', season_stats_path(per: @per_page), class: 'text-orange-700 underline' %>
+            <% else %>
+              Nenhum dado de temporada importado. <% if current_user.admin? %>Clique em atualizar (admin).<% end %>
+            <% end %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
+
+<% if @stats_total_pages > 1 %>
+  <nav class="flex flex-wrap items-center justify-between gap-2 mt-3 text-sm" aria-label="Paginação (rodapé)">
+    <span class="text-slate-500 tabular-nums">Página <%= @stats_page %> / <%= @stats_total_pages %></span>
+    <div class="flex flex-wrap gap-2">
+      <% base = ss_base %>
+      <%= link_to '« Primeira', season_stats_path(base.merge(page: 1)), class: 'text-slate-600 hover:text-orange-700 hover:underline' if @stats_page > 1 %>
+      <% if @stats_page > 1 %>
+        <%= link_to '‹ Anterior', season_stats_path(base.merge(page: @stats_page - 1)), class: 'text-orange-700 hover:underline font-medium' %>
+      <% end %>
+      <% if @stats_page < @stats_total_pages %>
+        <%= link_to 'Próxima ›', season_stats_path(base.merge(page: @stats_page + 1)), class: 'text-orange-700 hover:underline font-medium' %>
+      <% end %>
+      <%= link_to 'Última »', season_stats_path(base.merge(page: @stats_total_pages)), class: 'text-slate-600 hover:text-orange-700 hover:underline' if @stats_page < @stats_total_pages %>
+    </div>
+  </nav>
+<% end %>

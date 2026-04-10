@@ -1,0 +1,87 @@
+<div class="mb-4">
+  <%= link_to '← Comparar', comparisons_path, class: 'text-sm text-orange-700 hover:underline' %>
+</div>
+
+<h1 class="text-2xl font-bold text-slate-800 mb-2">Jogador × time adversário</h1>
+<p class="text-sm text-slate-600 mb-4">Usa <strong>game logs</strong> já importados no banco. Temporada de referência nas médias: todos os jogos do jogador; coluna “vs adversário” filtra <code>opponent_team</code>.</p>
+
+<%= form_with url: comparisons_matchup_path, method: :get, local: true, class: 'flex flex-wrap items-end gap-2 mb-6' do %>
+  <div>
+    <label class="block text-xs font-medium text-slate-600 mb-1">Jogador</label>
+    <%= select_tag :player_id, options_from_collection_for_select(@players, :id, :name, @player&.id), include_blank: '—', class: 'rounded border border-slate-300 px-2 py-2 text-sm min-w-[12rem]' %>
+  </div>
+  <div>
+    <label class="block text-xs font-medium text-slate-600 mb-1">Time adversário</label>
+    <%= select_tag :opponent, options_for_select(@teams, @opponent), include_blank: '—', class: 'rounded border border-slate-300 px-2 py-2 text-sm' %>
+  </div>
+  <%= submit_tag 'Analisar', class: 'bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium py-2 px-2 rounded cursor-pointer' %>
+<% end %>
+
+<% if @player && @opponent %>
+  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm mb-6">
+    <h2 class="text-lg font-semibold text-slate-900 mb-2"><%= @player.name %> (<%= @player.team || '—' %>) vs <%= @opponent %></h2>
+    <div class="grid sm:grid-cols-3 gap-2 text-sm">
+      <div class="rounded bg-slate-50 p-2">
+        <p class="text-xs text-slate-500 uppercase">Pontos · temporada</p>
+        <p class="font-semibold">média <%= dash_num(@metrics_pts.season_avg) %> · vs <%= @opponent %>: <%= dash_num(@metrics_pts.vs_opponent_avg) %></p>
+        <p class="text-xs text-slate-500 mt-1">Jogos vs time: <%= @opponent_stats.count %></p>
+      </div>
+      <div class="rounded bg-slate-50 p-2">
+        <p class="text-xs text-slate-500 uppercase">Rebotes</p>
+        <p class="font-semibold">média <%= dash_num(@metrics_reb.season_avg) %> · vs <%= @opponent %>: <%= dash_num(@metrics_reb.vs_opponent_avg) %></p>
+      </div>
+      <div class="rounded bg-slate-50 p-2">
+        <p class="text-xs text-slate-500 uppercase">Assistências</p>
+        <p class="font-semibold">média <%= dash_num(@metrics_ast.season_avg) %> · vs <%= @opponent %>: <%= dash_num(@metrics_ast.vs_opponent_avg) %></p>
+      </div>
+    </div>
+  </div>
+
+  <h3 class="text-md font-semibold text-slate-800 mb-2">Partidas do jogador vs <%= @opponent %></h3>
+  <% if @opponent_stats.any? %>
+    <div class="overflow-x-auto rounded-lg border border-slate-200 mb-8">
+      <table class="min-w-full text-sm">
+        <thead class="bg-slate-100 text-left">
+          <tr>
+            <th class="px-2 py-2">Data</th>
+            <th class="px-2 py-2">Casa?</th>
+            <th class="px-2 py-2 text-right">PTS</th>
+            <th class="px-2 py-2 text-right">REB</th>
+            <th class="px-2 py-2 text-right">AST</th>
+            <th class="px-2 py-2">Jogo</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @opponent_stats.each do |st| %>
+            <tr class="border-t border-slate-100">
+              <td class="px-2 py-2"><%= st.game_date&.strftime('%d/%m/%Y') %></td>
+              <td class="px-2 py-2"><%= st.is_home ? 'sim' : 'não' %></td>
+              <td class="px-2 py-2 text-right tabular-nums"><%= st.points %></td>
+              <td class="px-2 py-2 text-right tabular-nums"><%= st.rebounds %></td>
+              <td class="px-2 py-2 text-right tabular-nums"><%= st.assists %></td>
+              <td class="px-2 py-2"><%= link_to 'Ver jogo', game_path(st.game), class: 'text-orange-700 hover:underline text-xs' %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="text-slate-500 text-sm mb-8">Nenhum game log contra esse adversário. Importe logs nos jogos correspondentes.</p>
+  <% end %>
+
+  <h3 class="text-md font-semibold text-slate-800 mb-2">
+    Jogos <%= @player.team.presence || 'time do jogador' %> × <%= @opponent %> (cadastrados)
+  </h3>
+  <% if @team_vs_opponent_games.any? %>
+    <ul class="space-y-2 text-sm">
+      <% @team_vs_opponent_games.each do |g| %>
+        <li class="rounded border border-slate-200 bg-white px-3 py-2 flex flex-wrap justify-between gap-2">
+          <span><%= g.game_date&.strftime('%d/%m/%Y') %> · <span class="text-orange-700"><%= g.away_team %></span> @ <%= g.home_team %></span>
+          <%= link_to 'Ver', game_path(g), class: 'text-orange-700 hover:underline' %>
+        </li>
+      <% end %>
+    </ul>
+  <% else %>
+    <p class="text-slate-500 text-sm">Nenhum jogo entre o time do jogador e <%= @opponent %> no banco (confira abreviação do time no cadastro do jogador).</p>
+  <% end %>
+<% end %>

@@ -1,0 +1,202 @@
+================================================================================
+NBA PROJECT — RESUMO DO PIPELINE DE DADOS E INTEGRAÇÕES
+================================================================================
+Documento para validação: o que precisa rodar, de onde vêm os dados, onde
+eles aparecem no app, e o que ainda pode estar pendente.
+
+Última revisão: alinhado ao código em app/, lib/tasks/nba.rake e data_sync/.
+
+
+--------------------------------------------------------------------------------
+1) O QUE VOCÊ PRECISA PARA O FLUXO EM PYTHON (nba_api) FUNCIONAR
+--------------------------------------------------------------------------------
+
+Objetivo: popular o MESMO PostgreSQL que o Rails usa, usando a biblioteca
+nba_api (swar/nba_api), que espelha as chamadas ao site stats.nba.com.
+
+Obrigatório:
+  • DATABASE_URL no arquivo .env dentro de data_sync/ (ou export no shell),
+    apontando para o mesmo banco do Rails (ex.: postgres://user:pass@host/db).
+  • Python 3 + ambiente virtual e dependências:
+      cd data_sync && python3 -m venv .venv && source .venv/bin/activate
+      pip install -r requirements.txt
+  • Rede HTTP de saída até stats.nba.com (a NBA costuma filtrar por IP,
+    User-Agent e volume; o README do projeto já cita isso).
+  • Temporada no formato da NBA nos scripts, ex.: --season 2025-26 (deve
+    bater com NBA_SEASON no Rails se você misturar os dois lados).
+
+Opcional / recomendado:
+  • Atraso entre requisições (no README: NBA_SEASON_SYNC_DELAY_SEC no .env
+    do Python) para não estourar rate limit.
+  • Rodar com --limit nos scripts pesados (game logs) para teste antes da
+    carga completa.
+
+Scripts Python (pasta data_sync/) — ordem sugerida no README:
+  1. sync_league_players.py     → players (nba_player_id, nome, time)
+  2. sync_player_season_stats.py → player_season_stats
+  3. sync_player_gamelogs.py    → games + player_game_stats (pesado)
+  4. sync_games_espn.py         → grade ESPN (opcional, alinhado ao provider ESPN)
+
+Leitura oficial da pasta: data_sync/README.md
+
+
+--------------------------------------------------------------------------------
+2) O QUE VOCÊ PRECISA PARA A INTEGRAÇÃO SECUNDÁRIA (BallDontLie)
+--------------------------------------------------------------------------------
+
+No Rails, BallDontLie é FALLBACK quando stats.nba.com falha ou não devolve
+dados úteis (ex.: PlayerGameLogImporter, PlayerSeasonStatsSync). A coluna
+data_source marca 'nba' vs 'balldontlie'. Linhas já gravadas como NBA não
+são sobrescritas pelo fallback (comportamento documentado no README).
+
+Para o fallback funcionar bem:
+  • players.bdl_player_id — usado nas chamadas /stats da API. O app tenta
+    resolver via Balldontlie::PlayerResolver (busca por sobrenome + time).
+    Sem bdl_player_id e sem NBA, o fallback fica limitado.
+  • Rede HTTP até o host configurado em BALLDONTLIE_API_BASE (default
+    https://api.balldontlie.io/v1).
+  • Timeouts ajustáveis: BALLDONTLIE_OPEN_TIMEOUT, BALLDONTLIE_READ_TIMEOUT,
+    BALLDONTLIE_PAGE_DELAY_SEC (paginação de /stats).
+
+Observação prática: planos e regras da API BallDontLie mudam com o tempo.
+Se a v1 exigir chave ou retornar 401, será preciso incluir header de
+autenticação no Balldontlie::Client — hoje o código usa só Accept/User-Agent.
+Validar no painel do BallDontLie se o seu ambiente precisa de API key.
+
+
+--------------------------------------------------------------------------------
+3) VARIÁVEIS DE AMBIENTE ÚTEIS NO RAILS (referência rápida)
+--------------------------------------------------------------------------------
+
+  NBA_SEASON              → formato "YYYY-YY" (ex.: 2025-26); default no initializer.
+  NBA_SCOREBOARD_PROVIDER → 'espn' (padrão) ou 'nba_stats' / 'nba' para grade via NBA.
+  NBA_SEASON_SYNC_BATCH   → lote na UI de sync de temporada (SeasonStats).
+  NBA_SEASON_SYNC_DELAY_SEC → pausa entre jogadores em PlayerSeasonStatsSync.
+  NBA_GAMELOG_*           → rake nba:sync_all_player_game_logs:
+                            NBA_GAMELOG_SYNC_LIMIT, NBA_GAMELOG_START_OFFSET,
+                            NBA_GAMELOG_DELAY_SEC
+  NBA_IMPORT_PLAYER_LIMIT → limite de jogadores no import de logs por JOGO (admin).
+  NBA_SCOREBOARD_*_TIMEOUT → timeouts do client NBA (scoreboard).
+  BALLDONTLIE_*           → base URL e timeouts (secundária).
+  NBA_CROSS_VALIDATE_PPG_THRESHOLD → tolerância no cross_source_validator.
+  PLAYER_METRICS_PACE_EXPONENT     → ajuste fino nas métricas.
+  OPENAI_API_KEY          → obrigatório para análises IA.
+  OPENAI_MODEL, OPENAI_JSON_RESPONSE → opcionais (OpenAiAnalyzer).
+
+
+--------------------------------------------------------------------------------
+4) MAPA: DADO → ORIGEM → COMO ATUALIZAR → ONDE USA NO APP
+--------------------------------------------------------------------------------
+
+JOGOS (tabela games)
+  Origem principal na UI: ESPN (Espn::ScoreboardSync) ao clicar em atualizar
+    jogos no dashboard, salvo NBA_SCOREBOARD_PROVIDER apontando para NBA.
+  Alternativa: jogos criados ao importar game logs da NBA (PlayerGameLogImporter)
+    com nba_game_id numérico; ESPN usa id espn-<id> em nba_game_id.
+  Como atualizar:
+    • Web: dashboard → sync do dia (só a data “hoje” em fuso ET).
+    • Python: data_sync/sync_games_espn.py
+  Onde usa:
+    • root (lista do dia), games#show, apostas/comentários, IA (game + player),
+      comparações (head-to-head entre times), Central de IA (filtro por jogo).
+
+PLAYERS (tabela players)
+  Origem: CommonAllPlayers (NBA) ou scripts Python equivalentes; time/nome;
+    nba_player_id e opcionalmente bdl_player_id.
+  Como atualizar:
+    • bin/rails nba:sync_league_players
+    • bin/rails nba:sync_season_full (roster + career stats)
+    • Python: sync_league_players.py
+  Onde usa:
+    • Todas as telas de jogador, comparações, métricas, IA, imports de log.
+
+PLAYER_SEASON_STATS
+  Origem: stats.nba.com playercareerstats (PerGame); fallback agregando
+    BallDontLie /stats por temporada.
+  Como atualizar:
+    • bin/rails nba:sync_season_stats ou nba:sync_season_full
+    • Web: Temporada → sincronizar (lote)
+    • Python: sync_player_season_stats.py
+  Onde usa:
+    • season_stats#index, elenco “sem sync”, Central de dados, inputs da IA
+      (PlayerMetrics::Calculator / GamePlayerAnalysis).
+
+PLAYER_GAME_STATS (logs por jogo)
+  Origem: stats.nba.com PlayerGameLog; fallback BallDontLie stats por jogo.
+  Como atualizar:
+    • Por jogador (serviço NbaStats::PlayerGameLogImporter)
+    • Em massa: bin/rails nba:sync_all_player_game_logs (progresso no terminal)
+    • Por jogo (admin): games#import_game_logs (limite NBA_IMPORT_PLAYER_LIMIT)
+    • Python: sync_player_gamelogs.py
+  Onde usa:
+    • games#show (props/métricas), comparações matchup (médias vs adversário),
+      rebuild de player_opponent_splits, qualidade das previsões e “comparisons”.
+
+TEAM_SEASON_STATS
+  Origem: stats.nba.com leaguedashteamstats (NbaStats::TeamSeasonStatsSync).
+  Como atualizar:
+    • bin/rails nba:sync_team_season_stats
+    • bin/rails nba:sync_context_for_ai (inclui este passo)
+  Onde usa:
+    • Contexto de time na liga (métricas agregadas), Central de dados (amostra),
+      enriquecimento para análises que dependem de ritmo/eficiência de time.
+
+PLAYER_OPPONENT_SPLITS
+  Origem: derivado LOCALMENTE de player_game_stats no intervalo
+    Nba::Season.date_range_for(NBA_SEASON).
+  Como atualizar:
+    • bin/rails nba:rebuild_player_opponent_splits
+    • bin/rails nba:sync_context_for_ai
+  Pré-requisito: volume suficiente de player_game_stats na temporada.
+  Onde usa:
+    • Payloads para IA / métricas quando há contexto vs adversário.
+
+ODDS_SNAPSHOTS
+  Origem: importador de odds por jogo (Odds::GameOddsImporter ao acionar na UI).
+  Como atualizar: games#fetch_odds (admin).
+  Onde usa: contexto de mercado nas análises quando integrado ao fluxo.
+
+AI_PREDICTIONS
+  Origem: OpenAI via Ai::GamePlayerAnalysis (entrada = métricas + contexto).
+  Como atualizar: Central de IA (admin), ou analyze em game (redireciona ao hub).
+  Requer: OPENAI_API_KEY; dados de jogador/jogo/métricas coerentes.
+  Onde usa: Central de IA (listagem, filtros, ordenação).
+
+CENTRAL DE DADOS (data_hub)
+  Não importa sozinha: só mostra contagens e amostras do que já está no Postgres.
+
+
+--------------------------------------------------------------------------------
+5) FLUXO RECOMENDADO “DO ZERO” ATÉ COMPARISONS + IA CONFIÁVEIS
+--------------------------------------------------------------------------------
+
+  1. Definir NBA_SEASON coerente (Rails + scripts Python se usar ambos).
+  2. Popular jogadores com NBA ID: nba:sync_league_players (ou Python 1).
+  3. Temporada (médias): nba:sync_season_stats ou sync_season_full.
+  4. Grade do dia: dashboard sync (ESPN por padrão) ou Python ESPN.
+  5. Game logs em massa: nba:sync_all_player_game_logs (pode demorar; usar LIMIT
+     para teste). Sem isso, matchup/comparisons e IA ficam “secos”.
+  6. Contexto agregado: nba:sync_context_for_ai (times + splits).
+  7. Conferir Central de dados (contagens, fontes, amostra de times).
+  8. IA: garantir OPENAI_API_KEY; gerar análises pela Central de IA.
+
+
+--------------------------------------------------------------------------------
+6) O QUE AINDA PODE ESTAR PENDENTE (CHECKLIST DE VALIDAÇÃO)
+--------------------------------------------------------------------------------
+
+  [ ] Rodar carga completa (ou amostra representativa) de player_game_stats —
+      é o principal gargalo que você citou para “comparisons não funcionar”.
+  [ ] Rodar nba:sync_context_for_ai após os logs (team_season_stats + splits).
+  [ ] Validar BallDontLie em produção (rate limit / necessidade de API key na v1).
+  [ ] bundle install / gems resolvidos no ambiente local (evitar GemNotFound).
+  [ ] Opcional: revisar rota legada POST season_stats/predict — hoje a IA
+      centralizou-se no ai_hub; pode manter ou redirecionar/documentar.
+  [ ] Opcional: ampliar data_hub com mais breakdowns (ex.: última sync por tabela)
+      se quiser operação mais fina.
+  [ ] Termos de uso: ESPN, NBA.com e BallDontLie — uso pessoal/interno conforme
+      políticas de cada fonte.
+
+================================================================================
+Fim do resumo. Ajuste este arquivo quando mudar endpoints, ENV ou fluxos.
+================================================================================

@@ -1,36 +1,101 @@
-<h1 class="text-2xl font-bold text-slate-800 mb-6">Ranking de acertos</h1>
-<p class="text-slate-600 text-sm mb-6">Apenas apostas com resultado win ou loss.</p>
+<h1 class="text-2xl font-bold text-slate-800 mb-2">Ranking de acertos</h1>
+<p class="text-slate-600 text-sm mb-2">Apenas apostas com resultado win ou loss.</p>
+
+<div class="grid gap-4 md:grid-cols-3 mb-6">
+  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <p class="text-xs uppercase text-slate-500 font-semibold tracking-wide">Props pontos · geral</p>
+    <% if @props_overall[:total].positive? %>
+      <p class="mt-2 text-2xl font-bold text-slate-900 tabular-nums"><%= @props_overall[:hit_rate_percent] %>%</p>
+      <p class="text-sm text-slate-600"><%= @props_overall[:wins] %> acertos / <%= @props_overall[:total] %> apostas</p>
+    <% else %>
+      <p class="mt-2 text-sm text-slate-500">Sem apostas de pontos finalizadas.</p>
+    <% end %>
+  </div>
+  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <p class="text-xs uppercase text-slate-500 font-semibold tracking-wide">Suas props (pontos)</p>
+    <% if @props_mine[:total].positive? %>
+      <p class="mt-2 text-2xl font-bold text-slate-900 tabular-nums"><%= @props_mine[:hit_rate_percent] %>%</p>
+      <p class="text-sm text-slate-600"><%= @props_mine[:wins] %> / <%= @props_mine[:total] %></p>
+    <% else %>
+      <p class="mt-2 text-sm text-slate-500">Nenhuma aposta de pontos finalizada.</p>
+    <% end %>
+  </div>
+  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:col-span-1">
+    <p class="text-xs uppercase text-slate-500 font-semibold tracking-wide">Por faixa de linha</p>
+    <% if @props_by_line.any? %>
+      <ul class="mt-2 space-y-1 text-sm text-slate-700 max-h-28 overflow-y-auto">
+        <% @props_by_line.each do |row| %>
+          <li class="flex justify-between gap-2 tabular-nums">
+            <span>Linha ~<%= row[:line_bucket] %></span>
+            <span><%= row[:hit_rate_percent] %>% <span class="text-slate-400">(<%= row[:wins] %>/<%= row[:total] %>)</span></span>
+          </li>
+        <% end %>
+      </ul>
+    <% else %>
+      <p class="mt-2 text-sm text-slate-500">Sem dados por linha.</p>
+    <% end %>
+  </div>
+</div>
+
+<% if @props_top_players.any? %>
+  <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden mb-6">
+    <div class="px-3 py-2 bg-slate-100 border-b border-slate-200">
+      <h2 class="text-sm font-semibold text-slate-800">Taxa por jogador (props pontos, mín. 3 apostas)</h2>
+    </div>
+    <table class="min-w-full text-sm">
+      <thead class="bg-slate-50 text-left text-slate-600">
+        <tr>
+          <th class="px-2 py-2 font-semibold">Jogador</th>
+          <th class="px-2 py-2 font-semibold text-right">Total</th>
+          <th class="px-2 py-2 font-semibold text-right">Acertos</th>
+          <th class="px-2 py-2 font-semibold text-right">Taxa</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @props_top_players.each do |row| %>
+          <% pl = @props_top_players_by_id[row[:player_id]] %>
+          <tr class="border-t border-slate-100">
+            <td class="px-2 py-2 font-medium text-slate-900"><%= pl&.name || "ID #{row[:player_id]}" %></td>
+            <td class="px-2 py-2 text-right tabular-nums"><%= row[:total] %></td>
+            <td class="px-2 py-2 text-right tabular-nums text-emerald-700"><%= row[:wins] %></td>
+            <td class="px-2 py-2 text-right font-semibold tabular-nums"><%= row[:hit_rate_percent] %>%</td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% end %>
 
 <div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
   <table class="min-w-full text-sm">
     <thead class="bg-slate-100 text-slate-700 text-left">
       <tr>
-        <th class="px-4 py-3 font-semibold">#</th>
-        <th class="px-4 py-3 font-semibold">Usuário</th>
-        <th class="px-4 py-3 font-semibold text-right">Total</th>
-        <th class="px-4 py-3 font-semibold text-right">Acertos</th>
-        <th class="px-4 py-3 font-semibold text-right">Taxa</th>
+        <th class="px-2 py-2 font-semibold">#</th>
+        <th class="px-2 py-2 font-semibold">Usuário</th>
+        <th class="px-2 py-2 font-semibold text-right">Total</th>
+        <th class="px-2 py-2 font-semibold text-right">Acertos</th>
+        <th class="px-2 py-2 font-semibold text-right">Taxa</th>
       </tr>
     </thead>
     <tbody>
       <% @rows.each_with_index do |row, i| %>
         <tr class="border-t border-slate-100 hover:bg-slate-50/80">
-          <td class="px-4 py-3 text-slate-500"><%= i + 1 %></td>
-          <td class="px-4 py-3 font-medium text-slate-900"><%= row[:email] %></td>
-          <td class="px-4 py-3 text-right"><%= row[:total_bets] %></td>
-          <td class="px-4 py-3 text-right text-emerald-700 font-medium"><%= row[:wins] %></td>
-          <td class="px-4 py-3 text-right font-semibold"><%= row[:hit_rate_percent] %>%</td>
+          <td class="px-2 py-2 text-slate-500"><%= i + 1 %></td>
+          <td class="px-2 py-2 font-medium text-slate-900"><%= row[:email] %></td>
+          <td class="px-2 py-2 text-right"><%= row[:total_bets] %></td>
+          <td class="px-2 py-2 text-right text-emerald-700 font-medium"><%= row[:wins] %></td>
+          <td class="px-2 py-2 text-right font-semibold"><%= row[:hit_rate_percent] %>%</td>
         </tr>
       <% end %>
       <% if @rows.empty? %>
         <tr>
-          <td colspan="5" class="px-4 py-8 text-center text-slate-500">Nenhuma aposta finalizada ainda.</td>
+          <td colspan="5" class="px-2 py-6 text-center text-slate-500">Nenhuma aposta finalizada ainda.</td>
         </tr>
       <% end %>
     </tbody>
   </table>
 </div>
 
-<div class="mt-6">
+<div class="mt-2">
   <%= link_to '← Voltar', root_path, class: 'text-sm text-orange-700 hover:underline' %>
 </div>

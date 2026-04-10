@@ -1,0 +1,54 @@
+<%# locals: title:, abbr:, roster:, pgs_by_player_id:, pss_by_player_id:, season: %>
+<div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden mb-6">
+  <div class="border-b border-slate-100 bg-slate-50 px-3 py-2">
+    <h3 class="text-lg font-semibold text-slate-900"><%= title %></h3>
+    <p class="text-xs text-slate-500"><%= abbr.presence || '—' %> · temporada <%= season %></p>
+  </div>
+  <% if roster.blank? %>
+    <p class="text-sm text-slate-500 p-4">Nenhum jogador encontrado com <code class="text-xs bg-slate-100 px-1 rounded">team</code> ou <code class="text-xs bg-slate-100 px-1 rounded">player_season_stats.team_abbr</code> = <strong><%= abbr %></strong>. Confira abreviações (ESPN vs NBA).</p>
+  <% else %>
+    <div class="overflow-x-auto">
+      <table class="w-full border-collapse border border-slate-300 text-xs sm:text-sm">
+        <thead>
+          <tr class="bg-slate-100 text-left text-slate-800">
+            <th class="border border-slate-300 px-2 py-2 font-semibold sticky left-0 z-10 bg-slate-100 min-w-[10rem]">Jogador</th>
+            <th class="border border-slate-300 px-2 py-2 font-semibold text-right" title="Box deste jogo; se vazio, média na temporada">MIN</th>
+            <th class="border border-slate-300 px-2 py-2 font-semibold text-right">PTS</th>
+            <th class="border border-slate-300 px-2 py-2 font-semibold text-right">REB</th>
+            <th class="border border-slate-300 px-2 py-2 font-semibold text-right">AST</th>
+            <th class="border border-slate-300 px-2 py-2 font-semibold text-right">STL</th>
+            <th class="border border-slate-300 px-2 py-2 font-semibold text-right">BLK</th>
+            <th class="border border-slate-300 px-2 py-2 font-semibold text-right">3PM</th>
+            <th class="border border-slate-300 px-2 py-2 font-semibold text-right">TOV</th>
+            <th class="border border-slate-300 px-2 py-2 font-semibold text-right">FGM/A</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-900">
+          <% roster.each_with_index do |player, idx| %>
+            <% pss = pss_by_player_id[player.id] %>
+            <% pgs = pgs_by_player_id[player.id] %>
+            <% row_bg = idx.even? ? 'bg-white' : 'bg-slate-50' %>
+            <tr class="<%= row_bg %> hover:bg-amber-50/50">
+              <td class="border border-slate-300 px-2 py-2 font-medium sticky left-0 z-10 <%= row_bg %> min-w-[10rem] shadow-[2px_0_0_0_rgb(203_213_225)]">
+                <%= link_to player.name, player_path(player), class: 'text-orange-700 hover:underline' %>
+              </td>
+              <td class="border border-slate-300 px-2 py-2 text-right align-middle"><%= roster_stat_cell(pgs, :minutes, pss, :min, precision: 1) %></td>
+              <td class="border border-slate-300 px-2 py-2 text-right align-middle"><%= roster_stat_cell(pgs, :points, pss, :pts, precision: 1) %></td>
+              <td class="border border-slate-300 px-2 py-2 text-right align-middle"><%= roster_stat_cell(pgs, :rebounds, pss, :reb, precision: 1) %></td>
+              <td class="border border-slate-300 px-2 py-2 text-right align-middle"><%= roster_stat_cell(pgs, :assists, pss, :ast, precision: 1) %></td>
+              <td class="border border-slate-300 px-2 py-2 text-right align-middle"><%= roster_stat_cell(pgs, :steals, pss, :stl, precision: 1) %></td>
+              <td class="border border-slate-300 px-2 py-2 text-right align-middle"><%= roster_stat_cell(pgs, :blocks, pss, :blk, precision: 1) %></td>
+              <td class="border border-slate-300 px-2 py-2 text-right align-middle"><%= roster_stat_cell(pgs, :three_pt_made, pss, :fg3m, precision: 1) %></td>
+              <td class="border border-slate-300 px-2 py-2 text-right align-middle"><%= roster_stat_cell(pgs, :turnovers, pss, :tov, precision: 1) %></td>
+              <td class="border border-slate-300 px-2 py-2 text-right align-middle"><%= roster_fg_made_att_cell(pgs, pss) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+    <p class="text-xs text-slate-500 px-3 py-2 border-t border-slate-200 bg-slate-50/50 leading-relaxed">
+      <strong class="text-slate-700">Números em preto</strong> = box score deste jogo (<code class="bg-slate-100 px-0.5 rounded">player_game_stats</code> para este <code class="bg-slate-100 px-0.5 rounded">game_id</code>).
+      <strong class="text-slate-600">Cinza</strong> = média por jogo na temporada (<code class="bg-slate-100 px-0.5 rounded">player_season_stats</code>) quando o box ainda não foi importado.
+    </p>
+  <% end %>
+</div>

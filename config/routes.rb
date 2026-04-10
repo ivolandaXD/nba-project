@@ -39,7 +39,7 @@ Rails.application.routes.draw do
         post :analyze
       end
       resources :comments, only: [:create]
-      resources :bets, only: [:create]
+      resources :bets, only: %i[create update]
     end
 
     resources :players, only: [:show] do
@@ -47,5 +47,17 @@ Rails.application.routes.draw do
     end
 
     get 'ranking', to: 'ranking#index'
+
+    get 'season_stats', to: 'season_stats#index', as: :season_stats
+    post 'season_stats/sync', to: 'season_stats#sync', as: :sync_season_stats
+    post 'season_stats/predict', to: 'season_stats#predict', as: :predict_season_stats_ai
+
+    get 'comparisons', to: 'comparisons#index', as: :comparisons
+    get 'comparisons/teams', to: 'comparisons#teams', as: :comparisons_teams
+    get 'comparisons/matchup', to: 'comparisons#matchup', as: :comparisons_matchup
+
+    get 'data_hub', to: 'data_hub#index', as: :data_hub
+    get 'ai_hub', to: 'ai_hub#index', as: :ai_hub
+    post 'ai_hub/analyze', to: 'ai_hub#analyze', as: :ai_hub_analyze
   end
 end

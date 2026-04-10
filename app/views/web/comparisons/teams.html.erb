@@ -1,0 +1,46 @@
+<div class="mb-4">
+  <%= link_to '← Comparar', comparisons_path, class: 'text-sm text-orange-700 hover:underline' %>
+</div>
+
+<h1 class="text-2xl font-bold text-slate-800 mb-2">Comparar times</h1>
+<p class="text-sm text-slate-600 mb-4">Temporada <strong><%= @season %></strong> · elencos a partir de <code class="bg-slate-100 px-1 rounded">players.team</code> + stats importadas.</p>
+
+<%= form_with url: comparisons_teams_path, method: :get, local: true, class: 'flex flex-wrap items-end gap-2 mb-6' do %>
+  <div>
+    <label class="block text-xs font-medium text-slate-600 mb-1">Time A</label>
+    <%= select_tag :team_a, options_for_select(@teams, @team_a), include_blank: '—', class: 'rounded border border-slate-300 px-2 py-2 text-sm' %>
+  </div>
+  <div>
+    <label class="block text-xs font-medium text-slate-600 mb-1">Time B</label>
+    <%= select_tag :team_b, options_for_select(@teams, @team_b), include_blank: '—', class: 'rounded border border-slate-300 px-2 py-2 text-sm' %>
+  </div>
+  <%= submit_tag 'Comparar', class: 'bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium py-2 px-2 rounded cursor-pointer' %>
+<% end %>
+
+<% if @team_a.present? && @team_b.present? && @team_a != @team_b %>
+  <div class="grid md:grid-cols-2 gap-4 mb-8">
+    <div>
+      <h2 class="text-lg font-semibold text-slate-900 mb-2"><%= @team_a %></h2>
+      <%= render 'roster_table', rows: @roster_a %>
+    </div>
+    <div>
+      <h2 class="text-lg font-semibold text-slate-900 mb-2"><%= @team_b %></h2>
+      <%= render 'roster_table', rows: @roster_b %>
+    </div>
+  </div>
+
+  <h2 class="text-lg font-semibold text-slate-800 mb-2">Jogos <%= @team_a %> × <%= @team_b %> (cadastrados)</h2>
+  <% if @h2h_games.any? %>
+    <ul class="space-y-2 text-sm">
+      <% @h2h_games.each do |g| %>
+        <li class="rounded border border-slate-200 bg-white px-3 py-2 flex flex-wrap justify-between gap-2">
+          <span><%= g.game_date&.strftime('%d/%m/%Y') %> · <span class="text-orange-700"><%= g.away_team %></span> @ <%= g.home_team %></span>
+          <span class="text-slate-500"><%= g.status %></span>
+          <%= link_to 'Ver', game_path(g), class: 'text-orange-700 hover:underline' %>
+        </li>
+      <% end %>
+    </ul>
+  <% else %>
+    <p class="text-slate-500 text-sm">Nenhum jogo entre esses times no banco ainda.</p>
+  <% end %>
+<% end %>

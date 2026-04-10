@@ -1,0 +1,28 @@
+<% if rows.any? %>
+  <div class="overflow-x-auto rounded-lg border border-slate-200">
+    <table class="min-w-full text-xs">
+      <thead class="bg-slate-100 text-left">
+        <tr>
+          <th class="px-2 py-2">Jogador</th>
+          <th class="px-2 py-2 text-right">GP</th>
+          <th class="px-2 py-2 text-right">PTS</th>
+          <th class="px-2 py-2 text-right">REB</th>
+          <th class="px-2 py-2 text-right">AST</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% rows.each do |s| %>
+          <tr class="border-t border-slate-100">
+            <td class="px-2 py-2"><%= link_to s.player.name, player_path(s.player), class: 'text-orange-700 hover:underline' %></td>
+            <td class="px-2 py-2 text-right tabular-nums"><%= s.gp %></td>
+            <td class="px-2 py-2 text-right tabular-nums"><%= number_with_precision(s.pts, precision: 1) %></td>
+            <td class="px-2 py-2 text-right tabular-nums"><%= number_with_precision(s.reb, precision: 1) %></td>
+            <td class="px-2 py-2 text-right tabular-nums"><%= number_with_precision(s.ast, precision: 1) %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% else %>
+  <p class="text-slate-500 text-sm">Sem jogadores com <code>team</code> = este time e stats de temporada. Importe em Temporada (admin).</p>
+<% end %>

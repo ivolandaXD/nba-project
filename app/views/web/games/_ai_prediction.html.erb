@@ -1,29 +1,128 @@
 <% meta = (pred.analysis_meta || {}).stringify_keys %>
+<% ctx = meta['manual_game_context'].presence %>
 <div class="<%= ai_prediction_shell_class(pred) %>">
-  <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
+  <div class="flex flex-wrap items-start justify-between gap-2 mb-2">
     <p class="text-xs font-semibold text-slate-700">
       <%= pred.player.name %> · <%= pred.created_at.strftime('%d/%m %H:%M') %>
     </p>
     <div class="flex flex-wrap gap-2 text-xs">
-      <span class="rounded-full px-3 py-1 font-medium bg-white/80 border border-slate-200">
-        Confiança: <strong><%= pred.confidence_score.to_i %></strong>/100
+      <span class="rounded-full px-2 py-1 font-medium bg-white/80 border border-slate-200" title="Score final (EV + consistência + contexto)">
+        Score: <strong><%= pred.confidence_score.to_i %></strong>/100
       </span>
-      <% if meta['probability_estimate'].present? %>
-        <span class="rounded-full px-3 py-1 font-medium <%= ai_meta_pill_classes(:probability, meta['probability_estimate']) %>">
+      <% if meta['confidence_score_model'].present? %>
+        <span class="rounded-full px-2 py-1 font-medium bg-white/80 border border-slate-200 text-slate-600" title="Modelo só estatístico (pré-contexto)">
+          Modelo: <strong><%= meta['confidence_score_model'].to_i %></strong>
+        </span>
+      <% end %>
+      <% if meta['recommendation'].present? %>
+        <span class="rounded-full px-2 py-1 font-medium <%= ai_meta_pill_classes(:recommendation, meta['recommendation']) %>">
+          <%= meta['recommendation'] %>
+        </span>
+      <% end %>
+      <% if meta['line_hit_probability'].present? %>
+        <span class="rounded-full px-2 py-1 font-medium <%= ai_meta_pill_classes(:line_hit, meta['line_hit_probability']) %>">
+          Linha: <%= meta['line_hit_probability'] %>
+        </span>
+      <% elsif meta['probability_estimate'].present? %>
+        <span class="rounded-full px-2 py-1 font-medium <%= ai_meta_pill_classes(:probability, meta['probability_estimate']) %>">
           Prob.: <%= meta['probability_estimate'] %>
         </span>
       <% end %>
+      <% if meta['trend_direction'].present? %>
+        <span class="rounded-full px-2 py-1 font-medium <%= ai_meta_pill_classes(:trend, meta['trend_direction']) %>">
+          Tendência: <%= meta['trend_direction'] %>
+        </span>
+      <% end %>
       <% if meta['risk_level'].present? %>
-        <span class="rounded-full px-3 py-1 font-medium <%= ai_meta_pill_classes(:risk, meta['risk_level']) %>">
+        <span class="rounded-full px-2 py-1 font-medium <%= ai_meta_pill_classes(:risk, meta['risk_level']) %>">
           Risco: <%= meta['risk_level'] %>
         </span>
       <% end %>
       <% if meta['value_bet'].present? %>
-        <span class="rounded-full px-3 py-1 font-medium <%= ai_meta_pill_classes(:value, meta['value_bet']) %>">
+        <span class="rounded-full px-2 py-1 font-medium <%= ai_meta_pill_classes(:value, meta['value_bet']) %>">
           Valor: <%= meta['value_bet'] %>
         </span>
       <% end %>
     </div>
   </div>
+
+  <% if meta['probability_over_percent'].present? || meta['adjusted_probability_percent'].present? %>
+    <div class="mb-3 rounded-lg border border-slate-200 bg-white/70 px-3 py-2 text-xs text-slate-700 space-y-1">
+      <p class="font-semibold text-slate-800">Probabilidade e EV (modelo)</p>
+      <div class="grid sm:grid-cols-2 gap-x-4 gap-y-1 tabular-nums">
+        <% if meta['probability_over_percent'].present? %>
+          <span>P(over) base: <strong><%= meta['probability_over_percent'] %>%</strong></span>
+        <% end %>
+        <% if meta['adjusted_probability_percent'].present? %>
+          <span>P(over) ajustada: <strong><%= meta['adjusted_probability_percent'] %>%</strong></span>
+        <% end %>
+        <% if meta['implied_probability_percent'].present? %>
+          <span>Implícita (odds): <strong><%= meta['implied_probability_percent'] %>%</strong></span>
+        <% end %>
+        <% if meta['context_modifier_total_percent_points'].present? %>
+          <span>Δ contexto: <strong><%= meta['context_modifier_total_percent_points'] %>%</strong> pts prob.</span>
+        <% end %>
+        <% if meta['ev'].present? %>
+          <span>EV (sobre P ajustada): <strong><%= meta['ev'] %></strong> u./aposta</span>
+        <% end %>
+        <% if meta['ev_base'].present? %>
+          <span>EV (base): <strong><%= meta['ev_base'] %></strong></span>
+        <% end %>
+      </div>
+      <% mods = meta['context_modifiers_applied'] %>
+      <% if mods.is_a?(Array) && mods.any? %>
+        <ul class="mt-2 list-disc list-inside text-slate-600 space-y-0.5">
+          <% mods.each do |row| %>
+            <% next unless row.is_a?(Hash) %>
+            <li>
+              <%= row['label'] %>
+              <% if row['delta_percent_points'].present? %>
+                (<strong><%= row['delta_percent_points'] %>%</strong>)
+              <% end %>
+            </li>
+          <% end %>
+        </ul>
+      <% end %>
+    </div>
+  <% end %>
+
+  <% if ctx.is_a?(Hash) && ctx.any? %>
+    <div class="mb-3 rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-xs text-slate-800">
+      <p class="font-semibold text-indigo-950 mb-1">Contexto inserido</p>
+      <ul class="space-y-1 text-slate-700">
+        <% if ctx['injuries'].is_a?(Array) && ctx['injuries'].any? %>
+          <li><span class="text-slate-500">Fora:</span> <%= ctx['injuries'].join(', ') %></li>
+        <% end %>
+        <% if ctx['returning_players'].is_a?(Array) && ctx['returning_players'].any? %>
+          <li><span class="text-slate-500">Retornando:</span> <%= ctx['returning_players'].join(', ') %></li>
+        <% end %>
+        <% if ctx['pace'].present? %>
+          <li><span class="text-slate-500">Pace:</span> <%= ctx['pace'] %></li>
+        <% end %>
+        <% if ctx.key?('is_back_to_back') %>
+          <li><span class="text-slate-500">Back-to-back:</span> <%= ctx['is_back_to_back'] ? 'sim' : 'não' %></li>
+        <% end %>
+        <% if ctx.key?('is_home') %>
+          <li><span class="text-slate-500">Jogador em casa:</span> <%= ctx['is_home'] ? 'sim' : 'não' %></li>
+        <% end %>
+        <% if ctx['spread'].present? %>
+          <li><span class="text-slate-500">Spread:</span> <%= ctx['spread'] %></li>
+        <% end %>
+        <% if ctx['opponent_defense_rank_vs_position'].present? %>
+          <li><span class="text-slate-500">Def. vs pos.:</span> rank <%= ctx['opponent_defense_rank_vs_position'] %></li>
+        <% end %>
+        <% if ctx['opponent_rebounds_allowed_rank'].present? %>
+          <li><span class="text-slate-500">Reb. cedidos (rank):</span> <%= ctx['opponent_rebounds_allowed_rank'] %></li>
+        <% end %>
+        <% if ctx['key_teammate_out'].present? %>
+          <li><span class="text-slate-500">Desfalque chave:</span> <%= ctx['key_teammate_out'] %></li>
+        <% end %>
+        <% if ctx['matchup_favorable'] %>
+          <li><span class="text-slate-500">Matchup:</span> favorável (manual)</li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
   <div class="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed"><%= pred.output_text %></div>
 </div>

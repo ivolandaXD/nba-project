@@ -1,0 +1,23 @@
+<% roll = local_assigns.fetch(:roll) %>
+<div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm mb-6">
+  <h2 class="text-lg font-semibold text-slate-800 mb-1">Arremessos e lance livre</h2>
+  <p class="text-xs text-slate-500 mb-3">Agregado dos game logs (temporada) · % efetiva = soma de tentos / soma de arremessos</p>
+  <div class="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+    <div class="rounded-lg bg-slate-50 p-3">
+      <p class="text-slate-500 text-xs uppercase mb-1">Field goals</p>
+      <p class="font-semibold text-slate-900 tabular-nums"><%= dash_num(roll[:fgm_pg]) %> FGM / <%= dash_num(roll[:fga_pg]) %> FGA</p>
+      <p class="text-slate-600 mt-1">FG% (soma FGM/FGA): <strong><%= roll[:fg_pct].nil? ? '—' : "#{roll[:fg_pct]}%" %></strong></p>
+    </div>
+    <div class="rounded-lg bg-slate-50 p-3">
+      <p class="text-slate-500 text-xs uppercase mb-1">Triplos</p>
+      <p class="font-semibold text-slate-900 tabular-nums"><%= dash_num(roll[:thm_pg]) %> 3PM / <%= dash_num(roll[:tha_pg]) %> 3PA</p>
+      <p class="text-slate-600 mt-1">3P%: <strong><%= roll[:th_pct].nil? ? '—' : "#{roll[:th_pct]}%" %></strong></p>
+    </div>
+    <div class="rounded-lg bg-slate-50 p-3">
+      <p class="text-slate-500 text-xs uppercase mb-1">Lances livres</p>
+      <p class="font-semibold text-slate-900 tabular-nums"><%= dash_num(roll[:ftm_pg]) %> FTM / <%= dash_num(roll[:fta_pg]) %> FTA</p>
+      <p class="text-slate-600 mt-1">FT%: <strong><%= roll[:ft_pct].nil? ? '—' : "#{roll[:ft_pct]}%" %></strong></p>
+    </div>
+  </div>
+  <p class="text-xs text-slate-400 mt-2 tabular-nums">Base: <%= roll[:gp] %> jogo(s) com linha em player_game_stats</p>
+</div>

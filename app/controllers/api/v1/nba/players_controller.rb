@@ -6,7 +6,7 @@ module Api
           player = Player.find(params[:id])
           authorize player, :fetch_game_logs?
 
-          season = params[:season].presence || ENV.fetch('NBA_SEASON', '2024-25')
+          season = params[:season].presence || Nba::Season.current
           result = ::NbaStats::PlayerGameLogImporter.call(player, season: season)
           if result.success?
             render json: { imported_rows: result.stats_count, season: season }

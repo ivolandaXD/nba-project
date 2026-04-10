@@ -1,0 +1,112 @@
+<div class="mb-4">
+  <%= link_to '← Voltar', root_path, class: 'text-sm text-orange-700 hover:underline' %>
+</div>
+
+<h1 class="text-2xl font-bold text-slate-900 mb-1">Central de dados</h1>
+<p class="text-slate-600 text-sm mb-6">
+  Visão geral do que já está no Postgres para a temporada <strong><%= @season %></strong>.
+  Para preencher game logs em massa: <code class="text-xs bg-slate-100 px-1 rounded">bin/rails nba:sync_all_player_game_logs</code>
+  (use <code class="text-xs bg-slate-100 px-1 rounded">NBA_GAMELOG_SYNC_LIMIT</code> e <code class="text-xs bg-slate-100 px-1 rounded">NBA_GAMELOG_DELAY_SEC</code>).
+  Depois rode <code class="text-xs bg-slate-100 px-1 rounded">bin/rails nba:sync_context_for_ai</code> (estatísticas de times da liga + splits jogador×adversário).
+  Alternativa em Python: pasta <code class="text-xs bg-slate-100 px-1 rounded">data_sync/</code> no mesmo banco.
+</p>
+
+<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-8">
+  <% @count_rows.each do |row| %>
+    <div class="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+      <p class="text-xs text-slate-500 leading-snug"><%= row[:label] %></p>
+      <p class="text-2xl font-semibold text-slate-900"><%= number_with_delimiter(row[:value]) %></p>
+    </div>
+  <% end %>
+</div>
+
+<div class="grid md:grid-cols-2 gap-6 mb-8">
+  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-800 mb-2">Player game stats · fonte</h2>
+    <% if @pgs_by_source.blank? %>
+      <p class="text-sm text-slate-500">Nenhuma linha em player_game_stats ainda.</p>
+    <% else %>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-slate-500 border-b border-slate-100">
+            <th class="py-2 pr-2">Fonte</th>
+            <th class="py-2">Linhas</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @pgs_by_source.sort_by { |k, _| k.to_s }.each do |src, cnt| %>
+            <tr class="border-b border-slate-50">
+              <td class="py-2 pr-2 font-medium text-slate-800"><%= src.presence || '—' %></td>
+              <td class="py-2"><%= number_with_delimiter(cnt) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% end %>
+  </div>
+
+  <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-800 mb-2">Player season stats · fonte</h2>
+    <% if @pss_by_source.blank? %>
+      <p class="text-sm text-slate-500">Nenhuma linha em player_season_stats ainda.</p>
+    <% else %>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-slate-500 border-b border-slate-100">
+            <th class="py-2 pr-2">Fonte</th>
+            <th class="py-2">Linhas</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @pss_by_source.sort_by { |k, _| k.to_s }.each do |src, cnt| %>
+            <tr class="border-b border-slate-50">
+              <td class="py-2 pr-2 font-medium text-slate-800"><%= src.presence || '—' %></td>
+              <td class="py-2"><%= number_with_delimiter(cnt) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% end %>
+  </div>
+</div>
+
+<div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm overflow-x-auto">
+  <h2 class="text-lg font-semibold text-slate-800 mb-2">Times da temporada (amostra · PTS desc)</h2>
+  <% if @sample_teams.blank? %>
+    <p class="text-sm text-slate-500 mb-2">
+      Sem <code class="text-xs bg-slate-100 px-1 rounded">team_season_stats</code> para esta temporada.
+      Rode <code class="text-xs bg-slate-100 px-1 rounded">bin/rails nba:sync_team_season_stats</code> ou o agregador <code class="text-xs bg-slate-100 px-1 rounded">nba:sync_context_for_ai</code>.
+    </p>
+  <% else %>
+    <table class="w-full text-xs sm:text-sm min-w-[720px]">
+      <thead>
+        <tr class="text-left text-slate-500 border-b border-slate-200">
+          <th class="py-2 pr-2">Time</th>
+          <th class="py-2 pr-2">Nome</th>
+          <th class="py-2 pr-2">GP</th>
+          <th class="py-2 pr-2">W-L</th>
+          <th class="py-2 pr-2">PTS</th>
+          <th class="py-2 pr-2">REB</th>
+          <th class="py-2 pr-2">AST</th>
+          <th class="py-2 pr-2">Pace</th>
+          <th class="py-2">Sync</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @sample_teams.each do |t| %>
+          <tr class="border-b border-slate-50 hover:bg-slate-50/80">
+            <td class="py-2 pr-2 font-semibold text-slate-900"><%= t.team_abbr %></td>
+            <td class="py-2 pr-2 text-slate-700"><%= t.team_name.presence || '—' %></td>
+            <td class="py-2 pr-2"><%= t.gp %></td>
+            <td class="py-2 pr-2"><%= t.w %>-<%= t.l %></td>
+            <td class="py-2 pr-2"><%= t.pts %></td>
+            <td class="py-2 pr-2"><%= t.reb %></td>
+            <td class="py-2 pr-2"><%= t.ast %></td>
+            <td class="py-2 pr-2"><%= t.pace.presence || '—' %></td>
+            <td class="py-2 text-slate-500 whitespace-nowrap"><%= t.synced_at&.strftime('%d/%m %H:%M') || '—' %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+</div>

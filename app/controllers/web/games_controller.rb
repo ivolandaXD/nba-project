@@ -4,12 +4,32 @@ module Web
       @game = Game.find(params[:id])
       authorize @game, :show?
 
-      @players = Player.joins(:player_game_stats)
-                       .where(player_game_stats: { game_id: @game.id })
-                       .distinct
-                       .order(:name)
+      @season = Nba::Season.current
+      roster = GameRoster.new(game: @game, season: @season)
+      @home_abbr = roster.home_abbr
+      @away_abbr = roster.away_abbr
+
+      @team_stats_home = team_season_row(@home_abbr)
+      @team_stats_away = team_season_row(@away_abbr)
+
+      @home_roster = roster.home_players
+      @away_roster = roster.away_players
+
+      @pgs_by_player_id = PlayerGameStat.where(game_id: @game.id).includes(:player).index_by(&:player_id)
+
+      roster_ids = (@home_roster.pluck(:id) + @away_roster.pluck(:id)).uniq
+      @pss_by_player_id =
+        if roster_ids.any?
+          PlayerSeasonStat.where(season: @season, player_id: roster_ids).index_by(&:player_id)
+        else
+          {}
+        end
+
+      # Props / métricas: elenco dos dois times (não só quem já tem linha neste jogo).
+      @players = roster.all_players
+
       @comments = @game.comments.includes(:user).order(created_at: :desc)
-      @predictions = @game.ai_predictions.includes(:player).order(created_at: :desc)
+      @my_bets = current_user.bets.where(game_id: @game.id).includes(:player).order(created_at: :desc)
     end
 
     def fetch_odds
@@ -25,11 +45,13 @@ module Web
       @game = Game.find(params[:id])
       authorize @game, :fetch_odds?
 
-      players_scope = Player.joins(:player_game_stats)
-                            .where(player_game_stats: { game_id: @game.id })
-                            .distinct
+      @season = Nba::Season.current
+      gr = GameRoster.new(game: @game, season: @season)
+      roster_ids = (gr.home_players.pluck(:id) + gr.away_players.pluck(:id)).uniq
+      players_scope = roster_ids.any? ? Player.where(id: roster_ids) : Player.none
+
       if players_scope.empty?
-        flash[:alert] = 'Nenhum jogador com estatística neste jogo.'
+        flash[:alert] = 'Nenhum jogador no elenco dos times deste jogo (confira abreviações e cadastro).'
         redirect_to game_path(@game)
         return
       end
@@ -72,22 +94,40 @@ module Web
       @game = Game.find(params[:id])
       authorize @game, :analyze?
 
-      player = Player.find(params.require(:player_id))
+      safe = PlayerProps::ManualContext.permit_params(
+        params,
+        :player_id, :line, :bet_type, :odds, :confidence_score, :user_note
+      )
+      player = Player.find(safe.require(:player_id))
+      note = safe[:user_note].to_s.strip
+      note = note[0, 2000] if note.length > 2000
+
       result = Ai::GamePlayerAnalysis.call(
         game: @game,
         player: player,
-        line: params[:line].presence,
-        bet_type: params[:bet_type].presence || 'points',
-        odds: params[:odds].presence,
-        confidence_score: params[:confidence_score].presence
+        line: safe[:line].presence,
+        bet_type: safe[:bet_type].presence || 'points',
+        odds: safe[:odds].presence,
+        confidence_score: safe[:confidence_score].presence,
+        user_note: note.presence,
+        params: safe
       )
 
       if result[:ok]
-        flash[:notice] = 'Análise IA concluída.'
+        flash[:notice] = 'Análise IA concluída. Veja na Central de IA.'
       else
         flash[:alert] = result[:error]
       end
-      redirect_to game_path(@game)
+      redirect_to ai_hub_path(game_id: @game.id)
     end
+
+    private
+
+    def team_season_row(abbr)
+      return nil if abbr.blank?
+
+      TeamSeasonStat.find_by(season: @season, team_abbr: abbr)
+    end
+
   end
 end

@@ -1,5 +1,4 @@
 module NbaStats
-  # Upserts games for a single calendar day (NBA scoreboard for that date only).
   class ScoreboardSync
     Result = Struct.new(:ok, :games_count, :error, keyword_init: true) do
       def success?
@@ -7,7 +6,7 @@ module NbaStats
       end
     end
 
-    def self.call(date: Date.current)
+    def self.call(date: Calendar.scoreboard_today)
       new(date: date).call
     end
 
@@ -23,6 +22,10 @@ module NbaStats
       end
 
       body = response.parsed_response
+      unless body.is_a?(Hash)
+        return Result.new(ok: false, games_count: 0, error: 'Resposta da NBA não é JSON válido')
+      end
+
       sets = body['resultSets'] || []
       header = sets.find { |s| s['name'] == 'GameHeader' }
       line_score = sets.find { |s| s['name'] == 'LineScore' }
@@ -48,7 +51,8 @@ module NbaStats
 
       return Result.new(ok: false, games_count: 0, error: 'Colunas da NBA mudaram — ajuste o parser') if [gid_h, home_id_h, vis_id_h, gid_l, tid_l, abb_l].any?(&:nil?)
 
-      by_game = ls_rows.group_by { |r| r[gid_l] }
+      # A API pode devolver GAME_ID / TEAM_ID como Integer ou String; normalizar evita lookup vazio.
+      by_game = ls_rows.group_by { |r| r[gid_l].to_s }
       count = 0
 
       ActiveRecord::Base.transaction do
@@ -56,12 +60,15 @@ module NbaStats
           gid = row[gid_h].to_s
           next if gid.blank?
 
-          home_id = row[home_id_h]
-          vis_id = row[vis_id_h]
-          rows = by_game[row[gid_h]] || []
-          home_row = rows.find { |r| r[tid_l] == home_id }
-          vis_row = rows.find { |r| r[tid_l] == vis_id }
-          next unless home_row && vis_row
+          home_id = row[home_id_h].to_s
+          vis_id = row[vis_id_h].to_s
+          rows = by_game[gid] || []
+          home_row = rows.find { |r| r[tid_l].to_s == home_id }
+          vis_row = rows.find { |r| r[tid_l].to_s == vis_id }
+          unless home_row && vis_row
+            Rails.logger.warn("[ScoreboardSync] LineScore incompleto para game_id=#{gid} (home=#{home_id} visitor=#{vis_id}, linhas=#{rows.size})")
+            next
+          end
 
           game_date = parse_date(row[date_h]) || @date
           status_text = status_h ? row[status_h].to_s.strip : ''
@@ -78,10 +85,25 @@ module NbaStats
         end
       end
 
+      rows_with_id = game_rows.count { |r| r[gid_h].present? }
+      if rows_with_id.positive? && count.zero?
+        return Result.new(
+          ok: false,
+          games_count: 0,
+          error: 'A NBA retornou jogos no cabeçalho, mas não foi possível cruzar com LineScore (GAME_ID/TEAM_ID). Veja development.log.'
+        )
+      end
+
       Result.new(ok: true, games_count: count, error: nil)
     rescue StandardError => e
       Rails.logger.error("[ScoreboardSync] #{e.class}: #{e.message}")
-      Result.new(ok: false, games_count: 0, error: e.message)
+      msg = if e.is_a?(Net::ReadTimeout) || e.is_a?(Net::OpenTimeout)
+              'Timeout ao ler a API stats.nba.com (ela costuma demorar). Tente de novo; se persistir, ' \
+                'aumente NBA_SCOREBOARD_READ_TIMEOUT no .env (padrão 180s).'
+            else
+              e.message
+            end
+      Result.new(ok: false, games_count: 0, error: msg)
     end
 
     private

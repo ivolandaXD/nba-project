@@ -1,0 +1,153 @@
+================================================================================
+NBA PROJECT — O QUE JÁ TEMOS / O QUE FALTA FAZER
+(visão geral com base nos scripts Rails, data_sync Python e integrações atuais)
+================================================================================
+Última atualização: alinhado ao código do repositório (migrations, lib/tasks/nba.rake,
+app/services, pasta data_sync/).
+
+--------------------------------------------------------------------------------
+1) FONTES DE DADOS (APIs) QUE O PROJETO USA
+--------------------------------------------------------------------------------
+
+A) ESPN — grade / placar (JSON público)
+   - Serviço: Espn::ScoreboardSync (Rails)
+   - Script: data_sync/sync_games_espn.py
+   - Grava: games (home_team, away_team, game_date, status, nba_game_id = "espn-<id>")
+   - Extra: games.meta (jsonb) com bloco espn (odds, broadcasts, venue, notes, situation)
+   - Extra: home_win_prob / away_win_prob quando a ESPN expuser em odds (não é garantido)
+
+B) NBA stats (stats.nba.com) — via HTTParty no Ruby
+   - Cliente: app/services/nba_stats/client.rb
+   - Endpoints usados hoje:
+     * commonallplayers        → elenco + IDs (LeaguePlayersSync)
+     * playercareerstats       → player_season_stats (médias por jogo da temporada)
+     * playergamelog           → import de logs por jogador (Ruby + Python)
+     * scoreboardv2            → grade NBA (NbaStats::ScoreboardSync), se usar provider NBA
+     * leaguedashteamstats     → team_season_stats (médias por time na liga)
+
+C) The Odds API (ou similar)
+   - Serviço: Odds::GameOddsImporter (importa snapshots de odds ligados a game)
+   - Tabela: odds_snapshots
+
+D) OpenAI
+   - Serviço: Ai::OpenAiAnalyzer + Ai::GamePlayerAnalysis
+   - Gera: ai_predictions (texto + analysis_meta JSON)
+   - Não é fonte de estatística esportiva; consome o que já está no banco/cálculo
+
+--------------------------------------------------------------------------------
+2) BANCO DE DADOS — TABELAS E PAPEL DE CADA UMA
+--------------------------------------------------------------------------------
+
+games                  — jogos (ESPN e/ou NBA), meta, prob. vitória (quando houver)
+players                — jogadores; nba_player_id obrigatório para muitos fluxos NBA
+player_game_stats      — linha por jogo (PTS, REB, AST, FGM/FGA, 3PM/3PA, etc.)
+player_season_stats    — médias da temporada (NBA playercareerstats PerGame) + FGM/FGA/3PM/3PA
+team_season_stats      — médias por time na liga (leaguedashteamstats)
+player_opponent_splits — AGREGADO: médias jogador × adversário (rebuild a partir de player_game_stats)
+odds_snapshots         — odds capturadas por jogo/mercado
+ai_predictions         — saída da IA por jogo/jogador
+bets                   — apostas registradas; campo result (pending etc.) para histórico bateu/não
+comments, alerts       — comentários em jogo / alertas por jogador
+
+--------------------------------------------------------------------------------
+3) SCRIPTS / COMANDOS — RAILS (lib/tasks/nba.rake)
+--------------------------------------------------------------------------------
+
+Já existem:
+  bin/rails nba:sync_league_players       — roster NBA → players + vínculo órfãos (nome+time)
+  bin/rails nba:sync_season_stats         — temporada → player_season_stats (todos com nba_player_id)
+  bin/rails nba:sync_season_full          — league_players + season_stats
+  bin/rails nba:sync_team_season_stats    — times → team_season_stats
+  bin/rails nba:rebuild_player_opponent_splits — recalcula jogador × time (precisa game logs)
+  bin/rails nba:sync_context_for_ai       — team_season_stats + opponent_splits
+
+Outros fluxos web (não rake):
+  - Dashboard: sync de jogos (ESPN ou NBA conforme NBA_SCOREBOARD_PROVIDER)
+  - Temporada: sync em lote / job para player_season_stats
+  - Página do jogo: import game logs (admin), odds, análise IA
+  - Temporada: formulário “Previsão com IA” (jogo + jogador + nota opcional)
+
+--------------------------------------------------------------------------------
+4) SCRIPTS — PYTHON (pasta data_sync/)
+--------------------------------------------------------------------------------
+
+db.py                         — conexão PostgreSQL via DATABASE_URL
+sync_games_espn.py            — espelha grade ESPN no mesmo banco do Rails
+sync_league_players.py        — CommonAllPlayers (nba_api) → players
+sync_player_season_stats.py   — PlayerCareerStats PerGame → player_season_stats
+sync_player_gamelogs.py       — PlayerGameLog → games + player_game_stats
+
+Requisito: venv + pip install -r requirements.txt + .env com DATABASE_URL
+
+--------------------------------------------------------------------------------
+5) O QUE A IA JÁ RECEBE (ALÉM DAS MÉTRICAS DO PLAYERMETRICS)
+--------------------------------------------------------------------------------
+
+Em GamePlayerAnalysis, quando há adversário inferido do jogo:
+  - database_opponent_split        — médias do jogador vs aquele time (player_opponent_splits)
+  - database_opponent_team_season  — médias do time adversário na liga (team_season_stats)
+  - user_note                      — texto opcional do usuário
+
+Prompt da OpenAI instruído a usar user_note e esses blocos quando existirem.
+
+--------------------------------------------------------------------------------
+6) O QUE JÁ ESTÁ “BOM PARA O PRODUTO” (FUNCIONAL)
+--------------------------------------------------------------------------------
+
+- Grade do dia (ESPN padrão) persistida em games
+- Import de elenco + IDs (Ruby ou Python)
+- Stats de temporada por jogador + colunas de arremesso (FGM/FGA, 3PM/3PA)
+- Game logs → base para últimos jogos e para splits
+- Médias por time na liga (team_season_stats)
+- Splits jogador × adversário (rebuild SQL)
+- Odds em odds_snapshots (quando você roda o import)
+- IA estruturada (JSON) + histórico em ai_predictions
+- Apostas com campo de resultado para evoluir histórico “bateu / não bateu”
+
+--------------------------------------------------------------------------------
+7) O QUE AINDA FALTA / PRÓXIMOS PASSOS SUGERIDOS
+--------------------------------------------------------------------------------
+
+A) Probabilidade de vitória “estilo NBA.com” por jogo
+   - Hoje: tentativa parcial via ESPN (quando o JSON traz); sem sync dedicado NBA win prob.
+   - Falta: endpoint específico + ID numérico de jogo da NBA nos games (hoje muitos jogos são espn-*).
+   - Ação típica: campo extra (ex.: nba_stats_game_id), sync que cruza data+times ou usa scoreboard NBA.
+
+B) Cobertura completa de jogadores × todos os times
+   - Os splits dependem de player_game_stats com opponent_team preenchido e volume de jogos.
+   - Falta: garantir import massivo de game logs (Ruby/Python) para elenco inteiro ao longo da temporada.
+   - Opcional: job agendado (cron) rebuild_player_opponent_splits após import diário.
+
+C) Python espelhando team_season_stats e meta de jogos
+   - Hoje team_season_stats e games.meta/win_prob são Rails; Python não duplica.
+   - Falta (se quiser tudo em Python): scripts espelhados ou um único “orquestrador” documentado.
+
+D) Produção
+   - Jobs longos: fila real (Sidekiq) em vez de :async só em dev.
+   - Rate limit / retries documentados para stats.nba.com.
+
+E) UI / produto
+   - Tela que mostre team_season_stats e splits (hoje é mais dado de apoio à IA).
+   - Fluxo explícito “marcar aposta como green/red” em bets (se ainda não estiver na UX desejada).
+
+F) Qualidade dos dados
+   - Validar abreviações de time (ESPN vs NBA) para cruzar opponent_team com team_season_stats.team_abbr.
+   - Tratar jogadores trocados de time (splits e season row já vêm da fonte; revisar edge cases).
+
+G) Testes automatizados
+   - Poucos testes de serviços de sync agregados (team splits); considerar specs mínimos ou VCR.
+
+--------------------------------------------------------------------------------
+8) CHECKLIST RÁPIDO DE AMBIENTE
+--------------------------------------------------------------------------------
+
+[ ] bin/rails db:migrate (inclui player_season_stats, games.meta, team_season_stats, player_opponent_splits)
+[ ] .env com DATABASE_URL, NBA_SEASON, OPENAI_API_KEY (IA), THE_ODDS_API_KEY (odds)
+[ ] Rodar: nba:sync_league_players → nba:sync_season_stats (ou sync_season_full)
+[ ] Importar game logs (por jogo ou scripts Python) antes de rebuild_player_opponent_splits
+[ ] Rodar: nba:sync_team_season_stats e nba:rebuild_player_opponent_splits (ou sync_context_for_ai)
+[ ] Atualizar jogos do dia (dashboard) para ESPN preencher meta/prob quando disponível
+
+================================================================================
+FIM
+================================================================================

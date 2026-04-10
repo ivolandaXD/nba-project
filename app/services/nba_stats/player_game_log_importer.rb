@@ -1,12 +1,15 @@
+# frozen_string_literal: true
+
 module NbaStats
+  # Importa game logs: tenta stats.nba.com; se falhar ou vier vazio, usa balldontlie.io.
   class PlayerGameLogImporter
-    Result = Struct.new(:ok, :stats_count, :error, keyword_init: true) do
+    Result = Struct.new(:ok, :stats_count, :error, :source, keyword_init: true) do
       def success?
         ok
       end
     end
 
-    def self.call(player, season: ENV.fetch('NBA_SEASON', '2024-25'))
+    def self.call(player, season: Nba::Season.current)
       new(player, season: season).call
     end
 
@@ -17,18 +20,44 @@ module NbaStats
 
     def call
       unless @player.nba_player_id.present?
-        return Result.new(ok: false, stats_count: 0, error: 'Player nba_player_id is required')
+        return try_balldontlie('Player sem nba_player_id')
       end
 
+      nba = import_from_nba
+      if nba[:ok] && nba[:count].to_i.positive?
+        DataIngestion::Logger.log(
+          'PlayerGameLog',
+          message: 'fonte NBA',
+          player_id: @player.id,
+          stats_count: nba[:count],
+          source: DataSourceTrackable::SOURCE_NBA
+        )
+        return Result.new(ok: true, stats_count: nba[:count], error: nil, source: DataSourceTrackable::SOURCE_NBA)
+      end
+
+      reason = nba[:error].presence || 'NBA sem linhas'
+      DataIngestion::Logger.log(
+        'PlayerGameLog',
+        level: :warn,
+        message: 'fallback balldontlie',
+        player_id: @player.id,
+        nba_error: reason
+      )
+      try_balldontlie(reason)
+    end
+
+    private
+
+    def import_from_nba
       response = Client.player_game_log(player_id: @player.nba_player_id, season: @season)
       unless response.success?
-        return Result.new(ok: false, stats_count: 0, error: "NBA API error: HTTP #{response.code}")
+        return { ok: false, count: 0, error: "NBA API error: HTTP #{response.code}" }
       end
 
       body = response.parsed_response
       result_sets = body['resultSets'] || []
       log_set = result_sets.find { |rs| rs['name'] == 'PlayerGameLog' }
-      return Result.new(ok: false, stats_count: 0, error: 'Unexpected NBA API payload') unless log_set
+      return { ok: false, count: 0, error: 'Unexpected NBA API payload' } unless log_set
 
       headers = log_set['headers']
       rows = log_set['rowSet'] || []
@@ -77,20 +106,38 @@ module NbaStats
             three_pt_pct: row[idx.call('FG3_PCT')],
             ftm: row[idx.call('FTM')],
             fta: row[idx.call('FTA')],
-            ft_pct: row[idx.call('FT_PCT')]
+            ft_pct: row[idx.call('FT_PCT')],
+            data_source: DataSourceTrackable::SOURCE_NBA
           )
           stat.save!
           count += 1
         end
       end
 
-      Result.new(ok: true, stats_count: count, error: nil)
+      { ok: true, count: count, error: nil }
     rescue StandardError => e
-      Rails.logger.error("[PlayerGameLogImporter] #{e.class}: #{e.message}")
-      Result.new(ok: false, stats_count: 0, error: e.message)
+      Rails.logger.error("[PlayerGameLogImporter/NBA] #{e.class}: #{e.message}")
+      { ok: false, count: 0, error: e.message }
     end
 
-    private
+    def try_balldontlie(reason)
+      bdl = Balldontlie::PlayerGameLogImporter.call(@player, season: @season)
+      if bdl.success?
+        Result.new(
+          ok: true,
+          stats_count: bdl.stats_count,
+          error: nil,
+          source: DataSourceTrackable::SOURCE_BALLDONTLIE
+        )
+      else
+        Result.new(
+          ok: false,
+          stats_count: 0,
+          error: [reason, bdl.error].compact.join(' | '),
+          source: nil
+        )
+      end
+    end
 
     def parse_date(value)
       return if value.blank?

@@ -29,14 +29,23 @@ module Api
           game = Game.find(params[:id])
           authorize game, :analyze?
 
-          player = Player.find(params.require(:player_id))
+          safe = ::PlayerProps::ManualContext.permit_params(
+            params,
+            :player_id, :line, :bet_type, :odds, :confidence_score, :user_note
+          )
+          player = Player.find(safe.require(:player_id))
+          note = safe[:user_note].to_s.strip
+          note = note[0, 2000] if note.length > 2000
+
           result = ::Ai::GamePlayerAnalysis.call(
             game: game,
             player: player,
-            line: params[:line],
-            bet_type: params[:bet_type].presence || 'points',
-            odds: params[:odds],
-            confidence_score: params[:confidence_score]
+            line: safe[:line],
+            bet_type: safe[:bet_type].presence || 'points',
+            odds: safe[:odds],
+            confidence_score: safe[:confidence_score],
+            user_note: note.presence,
+            params: safe
           )
 
           unless result[:ok]
@@ -44,7 +53,9 @@ module Api
             return
           end
 
-          render json: result[:prediction].as_json(only: %i[id game_id player_id input_data output_text confidence_score created_at])
+          pred = result[:prediction]
+          render json: pred.as_json(only: %i[id game_id player_id input_data output_text confidence_score created_at])
+            .merge('analysis_meta' => pred.analysis_meta)
         end
       end
     end

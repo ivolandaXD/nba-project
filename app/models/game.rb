@@ -7,4 +7,6 @@ class Game < ApplicationRecord
   has_many :bets, dependent: :destroy
 
   validates :home_team, :away_team, presence: true
+
+  # meta: jsonb — blocos opcionais (ex.: espn.odds) para IA e debug sem novas colunas a cada campo da API.
 end

@@ -1,16 +1,30 @@
-<div class="mb-6">
+<div class="mb-4">
   <%= link_to '← Voltar', :back, class: 'text-sm text-orange-700 hover:underline' %>
 </div>
 
-<div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm mb-8">
+<div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm mb-6">
   <h1 class="text-2xl font-bold text-slate-900"><%= @player.name %></h1>
-  <p class="text-slate-600 mt-1"><%= @player.team %> · NBA ID <%= @player.nba_player_id || '—' %></p>
+  <p class="text-slate-600 mt-1"><%= @player.team %> · NBA ID <%= @player.nba_player_id || '—' %><% if @player.bdl_player_id.present? %> · BDL <%= @player.bdl_player_id %><% end %></p>
 </div>
 
-<div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm mb-8">
-  <h2 class="text-lg font-semibold text-slate-800 mb-4">Meus alertas neste jogador</h2>
+<% unless @player_has_game_logs %>
+  <div class="rounded-lg border border-amber-200 bg-amber-50/90 text-amber-950 text-sm px-3 py-2 mb-6">
+    Sem <code class="bg-white/80 px-1 rounded text-xs">player_game_stats</code> para este jogador. As seções abaixo ficarão vazias ou com traços até importar game logs
+    (<code class="bg-white/80 px-1 rounded text-xs">nba:sync_all_player_game_logs</code> ou import por jogo).
+  </div>
+<% end %>
+
+<% player_stat_profile_sections(@player).each do |section| %>
+  <%= render 'stat_profile_block', section: section %>
+<% end %>
+
+<% roll = player_shooting_rollups(@player) %>
+<%= render 'shooting_summary', roll: roll if roll %>
+
+<div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm mb-6">
+  <h2 class="text-lg font-semibold text-slate-800 mb-2">Meus alertas neste jogador</h2>
   <% if @my_alerts.any? %>
-    <ul class="space-y-2 text-sm mb-6">
+    <ul class="space-y-2 text-sm mb-4">
       <% @my_alerts.each do |a| %>
         <li class="flex flex-wrap justify-between gap-2 border-b border-slate-100 py-2">
           <span><span class="font-medium"><%= a.condition_type %></span> ≥ <%= a.threshold %></span>
@@ -19,11 +33,11 @@
       <% end %>
     </ul>
   <% else %>
-    <p class="text-slate-500 text-sm mb-6">Nenhum alerta ainda.</p>
+    <p class="text-slate-500 text-sm mb-4">Nenhum alerta ainda.</p>
   <% end %>
 
-  <h3 class="text-md font-semibold text-slate-800 mb-3">Novo alerta</h3>
-  <%= form_with model: Alert.new, url: player_alerts_path(@player), local: true, class: 'space-y-3 max-w-md' do |f| %>
+  <h3 class="text-md font-semibold text-slate-800 mb-2">Novo alerta</h3>
+  <%= form_with model: Alert.new, url: player_alerts_path(@player), local: true, class: 'space-y-2 max-w-md' do |f| %>
     <div>
       <%= f.label :condition_type, 'Tipo', class: 'block text-sm font-medium text-slate-700 mb-1' %>
       <%= f.select :condition_type,
@@ -35,6 +49,6 @@
       <%= f.label :threshold, 'Valor limite', class: 'block text-sm font-medium text-slate-700 mb-1' %>
       <%= f.text_field :threshold, class: 'w-full rounded border border-slate-300 px-3 py-2 text-sm', placeholder: 'ex: 25.5' %>
     </div>
-    <%= f.submit 'Criar alerta', class: 'bg-orange-600 hover:bg-orange-700 text-white text-sm py-2 px-4 rounded' %>
+    <%= f.submit 'Criar alerta', class: 'bg-orange-600 hover:bg-orange-700 text-white text-sm py-2 px-2 rounded' %>
   <% end %>
 </div>

@@ -1,0 +1,23 @@
+<%# locals: label:, abbr:, stat: (TeamSeasonStat|nil), season: %>
+<div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm h-full">
+  <h3 class="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-1"><%= label %></h3>
+  <p class="text-xl font-bold text-slate-900 mb-3"><%= abbr.presence || '—' %></p>
+  <% if stat.nil? %>
+    <p class="text-sm text-slate-500">Sem <code class="text-xs bg-slate-100 px-1 rounded">team_season_stats</code> para <%= season %>. Rode <code class="text-xs bg-slate-100 px-1 rounded">bin/rails nba:sync_team_season_stats</code>.</p>
+  <% else %>
+    <dl class="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+      <div><dt class="text-slate-500 text-xs">GP</dt><dd class="font-semibold tabular-nums"><%= stat.gp %> (<%= stat.w %>-<%= stat.l %>)</dd></div>
+      <div><dt class="text-slate-500 text-xs">PTS</dt><dd class="font-semibold tabular-nums"><%= dash_num(stat.pts) %></dd></div>
+      <div><dt class="text-slate-500 text-xs">REB</dt><dd class="font-semibold tabular-nums"><%= dash_num(stat.reb) %></dd></div>
+      <div><dt class="text-slate-500 text-xs">AST</dt><dd class="font-semibold tabular-nums"><%= dash_num(stat.ast) %></dd></div>
+      <div><dt class="text-slate-500 text-xs">STL / BLK</dt><dd class="font-semibold tabular-nums"><%= dash_num(stat.stl) %> / <%= dash_num(stat.blk) %></dd></div>
+      <div><dt class="text-slate-500 text-xs">TOV</dt><dd class="font-semibold tabular-nums"><%= dash_num(stat.tov) %></dd></div>
+      <div><dt class="text-slate-500 text-xs">FG%</dt><dd class="font-semibold tabular-nums"><%= pct_cell(stat.fg_pct) %></dd></div>
+      <div><dt class="text-slate-500 text-xs">3P% / FT%</dt><dd class="font-semibold tabular-nums"><%= pct_cell(stat.fg3_pct) %> · <%= pct_cell(stat.ft_pct) %></dd></div>
+      <div class="col-span-2"><dt class="text-slate-500 text-xs">Pace</dt><dd class="font-semibold tabular-nums"><%= dash_num(stat.pace) %></dd></div>
+      <% if stat.synced_at.present? %>
+        <div class="col-span-2 text-xs text-slate-400">Sync <%= stat.synced_at.strftime('%d/%m %H:%M') %></div>
+      <% end %>
+    </dl>
+  <% end %>
+</div>

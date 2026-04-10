@@ -1,0 +1,228 @@
+<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+  <%= link_to '← Voltar', root_path, class: 'text-sm text-orange-700 hover:underline' %>
+  <% if @game_id.present? %>
+    <%= link_to 'Ver jogo', game_path(@game_id), class: 'text-sm text-violet-700 hover:underline' %>
+  <% end %>
+</div>
+
+<h1 class="text-2xl font-bold text-slate-900 mb-1">Central de IA</h1>
+<p class="text-slate-600 text-sm mb-4">
+  Previsões salvas no banco. Filtre por texto (jogador ou times do jogo), <strong>escolha um jogo</strong> e ordene qualquer coluna.
+  O elenco na análise nova usa só jogadores daquele jogo (cadastro / temporada).
+</p>
+
+<details class="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-700 mb-4">
+  <summary class="cursor-pointer font-semibold text-slate-800">O que significa cada coluna da tabela?</summary>
+  <ul class="list-disc pl-5 mt-2 space-y-1 text-slate-600">
+    <li><strong>Criado</strong> — quando a análise foi gerada.</li>
+    <li><strong>Data jogo / Casa / Visitante</strong> — partida vinculada.</li>
+    <li><strong>Jogador</strong> — atleta analisado.</li>
+    <li><strong>Mercado</strong> — tipo de stat (ex.: points) enviado à IA.</li>
+    <li><strong>Linha / Odds</strong> — linha e cotação que você informou (se houver).</li>
+    <li><strong>Score</strong> — nota numérica de confiança (modelo / decisão) gravada na previsão.</li>
+    <li><strong>Rec. IA</strong> — resumo curto da recomendação estruturada (OVER / UNDER / PASS etc.).</li>
+    <li><strong>Texto</strong> — trecho do parecer completo (edge, contexto, ideias de props…).</li>
+  </ul>
+</details>
+
+<details class="rounded-lg border border-violet-200 bg-violet-50/60 px-3 py-2 text-sm text-violet-950 mb-4">
+  <summary class="cursor-pointer font-semibold">Como ler o texto numerado da IA (modo profissional / múltiplas props)?</summary>
+  <ol class="list-decimal pl-5 mt-2 space-y-1 text-violet-900/90">
+    <li><strong>Edge estatístico</strong> — onde o jogador está forte ou fraco vs linha, usando médias e consistência.</li>
+    <li><strong>Impacto do contexto</strong> — lesões, ritmo, casa/fora, spread, matchup defensivo.</li>
+    <li><strong>Probabilidade real (%)</strong> — leitura subjetiva da IA sobre chance de bater o cenário (não é preço da casa).</li>
+    <li><strong>EV</strong> — valor esperado em relação às odds informadas (quando existem).</li>
+    <li><strong>Risco ajustado</strong> — volatilidade e cenários ruins (blowout, minutos).</li>
+    <li><strong>Leitura final</strong> — síntese em linguagem natural.</li>
+    <li><strong>Recomendação</strong> — OVER / UNDER / PASS (ou NEUTRO) para a <em>linha principal</em>.</li>
+    <li><strong>Parlay / ideias de props</strong> (quando ativo) — aviso de correlação no mesmo jogo + lista de ideias (ex.: 20+ PTS, 2+ 3PM) com % estimada e fundamento (L5, temporada, vs time).</li>
+  </ol>
+  <p class="mt-2 text-xs text-violet-900/80">As porcentagens da IA são <strong>estimativas</strong> a partir dos dados do app; não substituem modelo de book nem garantia de resultado.</p>
+</details>
+
+<%= form_with url: ai_hub_path, method: :get, local: true, class: 'flex flex-wrap gap-2 items-end mb-4' do %>
+  <%= hidden_field_tag :sort, @sort %>
+  <%= hidden_field_tag :dir, @dir %>
+  <div>
+    <label class="block text-xs font-medium text-slate-600 mb-1">Busca (nome / time)</label>
+    <%= text_field_tag :q, @q, placeholder: 'Ex.: Curry, LAL…', class: 'rounded border border-slate-300 px-2 py-1.5 text-sm w-56 max-w-full' %>
+  </div>
+  <div>
+    <label class="block text-xs font-medium text-slate-600 mb-1">Jogo (filtro)</label>
+    <%= select_tag :game_id,
+        options_for_select(
+          [['Todos os jogos', '']] + @games_for_predict.map { |g|
+            [ "#{g.game_date&.strftime('%d/%m')} · #{g.away_team} @ #{g.home_team}", g.id.to_s ]
+          },
+          @game_id.to_s
+        ),
+        class: 'rounded border border-slate-300 px-2 py-1.5 text-sm max-w-xs' %>
+  </div>
+  <div>
+    <%= submit_tag 'Aplicar', class: 'bg-slate-800 hover:bg-slate-700 text-white text-sm py-1.5 px-3 rounded cursor-pointer' %>
+    <%= link_to 'Limpar', ai_hub_path, class: 'text-sm text-slate-600 hover:underline ml-2' %>
+  </div>
+<% end %>
+
+<p class="text-sm text-slate-600 mb-3">
+  <%= number_with_delimiter(@predictions_total) %> registro(s) com os filtros atuais · exibindo até 500 linhas.
+</p>
+
+<% if current_user.admin? %>
+  <div class="rounded-xl border border-amber-200 bg-amber-50/80 p-4 mb-6">
+    <h2 class="text-sm font-semibold text-amber-950 mb-2">Nova análise (admin)</h2>
+    <% if @game_id.blank? %>
+      <p class="text-sm text-amber-900 mb-3">Selecione um <strong>jogo</strong> no filtro acima e clique <strong>Aplicar</strong>. O elenco abaixo será só desse jogo.</p>
+    <% elsif @analyze_players.blank? %>
+      <p class="text-sm text-amber-900 mb-3">Nenhum jogador encontrado nos elencos deste jogo (times do placar × <code class="text-xs bg-white/80 px-1 rounded">players.team</code> / <code class="text-xs bg-white/80 px-1 rounded">player_season_stats</code>).</p>
+    <% end %>
+    <%= form_with url: ai_hub_analyze_path, method: :post, local: true, class: 'grid sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm' do %>
+      <%= hidden_field_tag :q, @q %>
+      <%= hidden_field_tag :sort, @sort %>
+      <%= hidden_field_tag :dir, @dir %>
+      <%= hidden_field_tag :game_id, @game_id.to_s %>
+      <div class="sm:col-span-2 lg:col-span-3 text-xs text-amber-900/90">
+        <% if @analyze_game %>
+          <strong>Jogo:</strong>
+          <%= @analyze_game.game_date&.strftime('%d/%m') %> ·
+          <%= @analyze_game.away_team %> @ <%= @analyze_game.home_team %>
+          <%= link_to '(trocar)', ai_hub_path(q: @q, sort: @sort, dir: @dir), class: 'text-amber-800 underline ml-1' %>
+        <% else %>
+          <span class="text-amber-800">Nenhum jogo selecionado no filtro.</span>
+        <% end %>
+      </div>
+      <div class="sm:col-span-2 lg:col-span-3">
+        <label class="block text-xs text-amber-900 mb-1">Jogador (só elenco deste jogo)</label>
+        <%= select_tag :player_id,
+            options_from_collection_for_select(@analyze_players, :id, :name),
+            {
+              prompt: (@game_id.present? ? 'Selecione…' : 'Primeiro escolha um jogo no filtro'),
+              required: true,
+              disabled: @game_id.blank? || @analyze_players.blank?,
+              class: 'w-full rounded border border-amber-300/80 px-2 py-1.5 disabled:opacity-50'
+            } %>
+      </div>
+      <div class="sm:col-span-2 lg:col-span-3 rounded border border-amber-200/80 bg-white/60 px-2 py-2">
+        <p class="text-xs font-semibold text-amber-950 mb-2">Mercados para a IA considerar</p>
+        <p class="text-xs text-amber-900/85 mb-2">Marque <strong>vários</strong> para modo <em>carteira de props</em> (várias ideias com % e fundamento). Marque só um para análise focada no mercado principal.</p>
+        <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+          <% %w[points rebounds assists threes steals blocks turnovers].each do |key| %>
+            <% label = { 'points' => 'Pontos', 'rebounds' => 'Rebotes', 'assists' => 'Assist.', 'threes' => '3PM', 'steals' => 'Roubos', 'blocks' => 'Tocos', 'turnovers' => 'TOV' }[key] %>
+            <label class="inline-flex items-center gap-1 cursor-pointer">
+              <%= check_box_tag 'prop_focus[]', key, key == 'points', id: "prop_focus_#{key}" %>
+              <span><%= label %></span>
+            </label>
+          <% end %>
+          <label class="inline-flex items-center gap-1 cursor-pointer font-medium">
+            <%= check_box_tag 'prop_focus[]', 'all', false, id: 'prop_focus_all' %>
+            <span>Todos</span>
+          </label>
+        </div>
+        <label class="inline-flex items-center gap-2 mt-2 text-xs cursor-pointer">
+          <%= check_box_tag :portfolio_mode, '1', false, id: 'portfolio_mode' %>
+          <span>Sugerir <strong>várias props</strong> mesmo com um mercado só (ideias tipo 20+ PTS, 2+ 3PT…)</span>
+        </label>
+      </div>
+      <div>
+        <label class="block text-xs text-amber-900 mb-1">Mercado principal</label>
+        <%= select_tag :bet_type,
+            options_for_select(
+              [%w[Pontos points], %w[Rebotes rebounds], %w[Assistências assists],
+               %w[Roubos steals], %w[Tocos blocks], %w[3PM threes], %w[Turnovers turnovers]],
+              'points'
+            ),
+            class: 'w-full rounded border border-amber-300/80 px-2 py-1.5' %>
+      </div>
+      <div>
+        <label class="block text-xs text-amber-900 mb-1">Linha</label>
+        <%= number_field_tag :line, nil, step: :any, class: 'w-full rounded border border-amber-300/80 px-2 py-1.5' %>
+      </div>
+      <div>
+        <label class="block text-xs text-amber-900 mb-1">Odds</label>
+        <%= text_field_tag :odds, nil, placeholder: '-110', class: 'w-full rounded border border-amber-300/80 px-2 py-1.5' %>
+      </div>
+      <div>
+        <label class="block text-xs text-amber-900 mb-1">Confiança manual (opcional)</label>
+        <%= number_field_tag :confidence_score, nil, step: :any, class: 'w-full rounded border border-amber-300/80 px-2 py-1.5' %>
+      </div>
+      <div class="sm:col-span-2 lg:col-span-3">
+        <label class="block text-xs text-amber-900 mb-1">Nota</label>
+        <%= text_area_tag :user_note, nil, rows: 2, class: 'w-full rounded border border-amber-300/80 px-2 py-1.5' %>
+      </div>
+      <div class="sm:col-span-2 lg:col-span-3">
+        <%= submit_tag 'Gerar análise',
+            class: 'bg-amber-700 hover:bg-amber-600 text-white text-sm py-2 px-4 rounded cursor-pointer disabled:opacity-50',
+            disabled: @game_id.blank? || @analyze_players.blank? %>
+      </div>
+    <% end %>
+  </div>
+<% end %>
+
+<div class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
+  <table class="w-full text-xs sm:text-sm min-w-[1100px]">
+    <thead>
+      <tr class="text-left text-slate-600 border-b border-slate-200 bg-slate-50">
+        <th class="py-2 px-2 whitespace-nowrap">
+          <%= ai_hub_sort_link 'Criado', :created_at, current_sort: @sort, current_dir: @dir, q: @q, game_id: @game_id %>
+        </th>
+        <th class="py-2 px-2 whitespace-nowrap">
+          <%= ai_hub_sort_link 'Data jogo', :game, current_sort: @sort, current_dir: @dir, q: @q, game_id: @game_id %>
+        </th>
+        <th class="py-2 px-2 whitespace-nowrap">
+          <%= ai_hub_sort_link 'Casa', :home_team, current_sort: @sort, current_dir: @dir, q: @q, game_id: @game_id %>
+        </th>
+        <th class="py-2 px-2 whitespace-nowrap">
+          <%= ai_hub_sort_link 'Visitante', :away_team, current_sort: @sort, current_dir: @dir, q: @q, game_id: @game_id %>
+        </th>
+        <th class="py-2 px-2 whitespace-nowrap">
+          <%= ai_hub_sort_link 'Jogador', :player, current_sort: @sort, current_dir: @dir, q: @q, game_id: @game_id %>
+        </th>
+        <th class="py-2 px-2 whitespace-nowrap">
+          <%= ai_hub_sort_link 'Mercado', :stat, current_sort: @sort, current_dir: @dir, q: @q, game_id: @game_id %>
+        </th>
+        <th class="py-2 px-2 whitespace-nowrap">
+          <%= ai_hub_sort_link 'Linha', :line, current_sort: @sort, current_dir: @dir, q: @q, game_id: @game_id %>
+        </th>
+        <th class="py-2 px-2 whitespace-nowrap">
+          <%= ai_hub_sort_link 'Odds', :odds, current_sort: @sort, current_dir: @dir, q: @q, game_id: @game_id %>
+        </th>
+        <th class="py-2 px-2 whitespace-nowrap">
+          <%= ai_hub_sort_link 'Score', :score, current_sort: @sort, current_dir: @dir, q: @q, game_id: @game_id %>
+        </th>
+        <th class="py-2 px-2 whitespace-nowrap">
+          <%= ai_hub_sort_link 'Rec. IA', :recommendation, current_sort: @sort, current_dir: @dir, q: @q, game_id: @game_id %>
+        </th>
+        <th class="py-2 px-2">
+          <%= ai_hub_sort_link 'Texto', :output_text, current_sort: @sort, current_dir: @dir, q: @q, game_id: @game_id %>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @predictions.each do |pred| %>
+        <% g = pred.game %>
+        <% inp = pred.input_data.is_a?(Hash) ? pred.input_data.stringify_keys : {} %>
+        <% meta = pred.analysis_meta.is_a?(Hash) ? pred.analysis_meta.stringify_keys : {} %>
+        <tr class="border-b border-slate-100 align-top hover:bg-slate-50/60">
+          <td class="py-2 px-2 text-slate-500 whitespace-nowrap"><%= pred.created_at.strftime('%d/%m %H:%M') %></td>
+          <td class="py-2 px-2 whitespace-nowrap">
+            <%= link_to g.game_date&.strftime('%d/%m'), game_path(g), class: 'text-violet-700 hover:underline' %>
+          </td>
+          <td class="py-2 px-2"><%= g.home_team %></td>
+          <td class="py-2 px-2"><%= g.away_team %></td>
+          <td class="py-2 px-2 font-medium text-slate-900">
+            <%= link_to pred.player.name, player_path(pred.player), class: 'text-orange-700 hover:underline' %>
+          </td>
+          <td class="py-2 px-2"><%= inp['stat'].presence || '—' %></td>
+          <td class="py-2 px-2"><%= inp['line'].presence || '—' %></td>
+          <td class="py-2 px-2"><%= inp['odds'].presence || '—' %></td>
+          <td class="py-2 px-2"><%= pred.confidence_score.presence || '—' %></td>
+          <td class="py-2 px-2 max-w-[140px]"><%= truncate(meta['recommendation'].presence || '—', length: 80) %></td>
+          <td class="py-2 px-2 text-slate-700 max-w-md"><%= truncate(pred.output_text, length: 200) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+  <% if @predictions.empty? %>
+    <p class="p-4 text-sm text-slate-500">Nenhuma previsão com estes filtros.</p>
+  <% end %>
+</div>

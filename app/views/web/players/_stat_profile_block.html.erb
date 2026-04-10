@@ -1,0 +1,83 @@
+<% section = local_assigns.fetch(:section) %>
+<% snap = section[:snapshot] %>
+<% m = snap[:m] %>
+<% sk = section[:key] %>
+<% rich = section[:rich] %>
+
+<div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm mb-6 <%= player_scenario_rail_class(snap[:confidence]) %>">
+  <h2 class="text-lg font-semibold text-slate-800 mb-0.5"><%= section[:title] %></h2>
+  <p class="text-xs text-slate-500 mb-3"><%= section[:subtitle] %> · médias por jogo nos logs importados</p>
+  <p class="text-sm text-slate-700 mb-3">
+    <span class="font-semibold">Confiança (modelo): <%= snap[:confidence] %>/100</span>
+    <span class="mx-2 text-slate-300">|</span>
+    Linha ref.: <strong><%= snap[:default_line] %></strong>
+    <span class="mx-2 text-slate-300">|</span>
+    Streak: <span class="inline-block rounded px-2 py-0.5 text-xs font-medium <%= streak_badge_class(m[:streak_status]) %>"><%= m[:streak_status] %></span>
+  </p>
+
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+    <div class="rounded bg-slate-50 p-2">
+      <p class="text-slate-500 text-xs uppercase">Temp · L5 · L10</p>
+      <p class="font-semibold text-slate-900 tabular-nums">
+        <%= dash_num(stat_profile_season_avg(m, sk)) %> · <%= dash_num(stat_profile_last_5(m, sk)) %> · <%= dash_num(stat_profile_last_10(m, sk)) %>
+      </p>
+    </div>
+    <% if rich %>
+      <div class="rounded bg-slate-50 p-2">
+        <p class="text-slate-500 text-xs uppercase">% &gt;15 / &gt;20 / &gt;25</p>
+        <p class="font-semibold text-slate-900 tabular-nums"><%= dash_num(m[:over_15_rate], '%') %> · <%= dash_num(m[:over_20_rate], '%') %> · <%= dash_num(m[:over_25_rate], '%') %></p>
+      </div>
+    <% else %>
+      <div class="rounded bg-slate-50 p-2">
+        <p class="text-slate-500 text-xs uppercase">% acima da linha</p>
+        <p class="font-semibold text-slate-900 tabular-nums"><%= dash_num(m[:over_line_rate], '%') %></p>
+      </div>
+    <% end %>
+    <div class="rounded bg-slate-50 p-2">
+      <p class="text-slate-500 text-xs uppercase">Tendência L5 − temp.</p>
+      <p class="font-semibold text-slate-900 tabular-nums"><%= dash_num(m[:trend]) %></p>
+    </div>
+    <div class="rounded bg-slate-50 p-2">
+      <p class="text-slate-500 text-xs uppercase">L10 − temp.</p>
+      <p class="font-semibold text-slate-900 tabular-nums"><%= dash_num(m[:trend_last_10_vs_season]) %></p>
+    </div>
+    <div class="rounded bg-slate-50 p-2">
+      <p class="text-slate-500 text-xs uppercase">Casa · Fora</p>
+      <p class="font-semibold text-slate-900 tabular-nums"><%= dash_num(stat_profile_home(m, sk)) %> · <%= dash_num(stat_profile_away(m, sk)) %></p>
+    </div>
+    <div class="rounded bg-slate-50 p-2">
+      <p class="text-slate-500 text-xs uppercase">MIN · FGA · FTA</p>
+      <p class="font-semibold text-slate-900 tabular-nums"><%= dash_num(m[:minutes_avg]) %> · <%= dash_num(m[:fga_avg]) %> · <%= dash_num(m[:fta_avg]) %></p>
+    </div>
+    <div class="rounded bg-slate-50 p-2">
+      <p class="text-slate-500 text-xs uppercase">σ · CV</p>
+      <p class="font-semibold text-slate-900 tabular-nums"><%= dash_num(stat_profile_std_dev(m, sk)) %> · <%= dash_num(m[:coefficient_of_variation]) %></p>
+    </div>
+    <% usage = sk == :points ? m[:usage_fga_fta_avg] : m[:usage_rate] %>
+    <div class="rounded bg-slate-50 p-2">
+      <p class="text-slate-500 text-xs uppercase">Uso FGA+FTA · /MIN</p>
+      <p class="font-semibold text-slate-900 tabular-nums"><%= dash_num(usage) %> · <%= dash_num(m[:usage_rate_per_minute]) %></p>
+    </div>
+  </div>
+
+  <% if rich %>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm mt-2">
+      <div class="rounded bg-slate-50 p-2">
+        <p class="text-slate-500 text-xs uppercase">% acima da linha</p>
+        <p class="font-semibold text-slate-900 tabular-nums"><%= dash_num(m[:over_line_rate], '%') %></p>
+      </div>
+      <div class="rounded bg-slate-50 p-2">
+        <p class="text-slate-500 text-xs uppercase">PTS / MIN</p>
+        <p class="font-semibold text-slate-900 tabular-nums"><%= dash_num(m[:points_per_minute]) %></p>
+      </div>
+      <div class="rounded bg-slate-50 p-2">
+        <p class="text-slate-500 text-xs uppercase">Pace time · liga</p>
+        <p class="font-semibold text-slate-900 tabular-nums"><%= dash_num(m[:team_pace]) %> · <%= dash_num(m[:league_avg_pace]) %></p>
+      </div>
+      <div class="rounded bg-slate-50 p-2">
+        <p class="text-slate-500 text-xs uppercase">Fator pace · PTS pace-adj.</p>
+        <p class="font-semibold text-slate-900 tabular-nums"><%= dash_num(m[:pace_factor]) %> · <%= dash_num(m[:season_avg_points_pace_adjusted]) %></p>
+      </div>
+    </div>
+  <% end %>
+</div>
