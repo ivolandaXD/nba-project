@@ -1,0 +1,11 @@
+/.bundle
+/log/*
+/tmp/*
+!/log/.keep
+!/tmp/.keep
+/vendor/bundle
+.env
+# Never commit — use RAILS_MASTER_KEY env or config/master.key locally only
+/config/master.key
+*.swp
+.DS_Store

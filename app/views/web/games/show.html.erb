@@ -1,0 +1,195 @@
+<div class="mb-6">
+  <%= link_to '← Voltar aos jogos do dia', root_path, class: 'text-sm text-orange-700 hover:underline' %>
+</div>
+
+<div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm mb-8">
+  <h1 class="text-2xl font-bold text-slate-900">
+    <span class="text-orange-700"><%= @game.away_team %></span>
+    <span class="text-slate-400 mx-2">@</span>
+    <span><%= @game.home_team %></span>
+  </h1>
+  <p class="text-slate-600 mt-2">
+    <%= @game.game_date&.strftime('%d/%m/%Y') %>
+    <% if @game.status.present? %>
+      <span class="text-slate-400"> · </span><%= @game.status %>
+    <% end %>
+  </p>
+
+  <% if current_user.admin? %>
+    <div class="mt-6 flex flex-wrap gap-2">
+      <%= button_to 'Importar game logs', import_game_logs_game_path(@game), method: :post,
+          class: 'bg-slate-800 hover:bg-slate-700 text-white text-sm py-2 px-3 rounded',
+          data: { confirm: 'Importar logs da NBA para todos os jogadores deste jogo com nba_player_id?' } %>
+      <%= button_to 'Atualizar odds', fetch_odds_game_path(@game), method: :post,
+          class: 'bg-indigo-700 hover:bg-indigo-600 text-white text-sm py-2 px-3 rounded' %>
+    </div>
+  <% end %>
+</div>
+
+<% if @predictions.any? %>
+  <h2 class="text-lg font-semibold text-slate-800 mb-3">Insights (IA)</h2>
+  <p class="text-xs text-slate-500 mb-4">Cores: verde = cenário mais favorável · amarelo = médio · vermelho = mais arriscado (score + risco).</p>
+  <div class="space-y-4 mb-10">
+    <%= render partial: 'web/games/ai_prediction', collection: @predictions, as: :pred %>
+  </div>
+<% end %>
+
+<h2 class="text-lg font-semibold text-slate-800 mb-3">Jogadores</h2>
+<% if @players.empty? %>
+  <p class="text-slate-500 mb-8">Nenhum jogador com estatística neste jogo. Importe logs (admin) ou vincule stats.</p>
+<% else %>
+  <div class="grid gap-6 mb-10">
+    <% @players.each do |player| %>
+      <% m = metrics_bundle_for_player(player, @game) %>
+      <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm <%= player_scenario_rail_class(m[:confidence_hint]) %>">
+        <div class="flex flex-wrap items-start justify-between gap-2 mb-4">
+          <div>
+            <h3 class="text-lg font-semibold text-slate-900"><%= player.name %></h3>
+            <p class="text-sm text-slate-500"><%= player.team %> · NBA ID: <%= player.nba_player_id || '—' %></p>
+            <p class="text-xs text-slate-600 mt-2">
+              Cenário (modelo): <strong><%= m[:confidence_hint] %></strong>/100
+              <span class="mx-2 text-slate-300">|</span>
+              Streak:
+              <span class="inline-block ml-1 rounded px-2 py-0.5 text-xs font-medium <%= streak_badge_class(m[:streak]) %>"><%= m[:streak] %></span>
+            </p>
+          </div>
+          <%= link_to 'Alertas / jogador', player_path(player), class: 'text-sm text-orange-700 hover:underline' %>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+          <div class="rounded bg-slate-50 p-3">
+            <p class="text-slate-500 text-xs uppercase tracking-wide">Média temporada</p>
+            <p class="font-semibold text-slate-900"><%= dash_num(m[:season_avg]) %> pts</p>
+          </div>
+          <div class="rounded bg-slate-50 p-3">
+            <p class="text-slate-500 text-xs uppercase tracking-wide">Últimos 10</p>
+            <p class="font-semibold text-slate-900"><%= dash_num(m[:last_10]) %> pts</p>
+          </div>
+          <div class="rounded bg-slate-50 p-3">
+            <p class="text-slate-500 text-xs uppercase tracking-wide">Vs adversário</p>
+            <p class="font-semibold text-slate-900"><%= dash_num(m[:vs_opponent]) %> pts</p>
+          </div>
+          <div class="rounded bg-slate-50 p-3">
+            <p class="text-slate-500 text-xs uppercase tracking-wide">Desvio / variância</p>
+            <p class="font-semibold text-slate-900"><%= dash_num(m[:std_dev]) %> / <%= dash_num(m[:variance]) %></p>
+          </div>
+          <div class="rounded bg-slate-50 p-3">
+            <p class="text-slate-500 text-xs uppercase tracking-wide">Coef. variação</p>
+            <p class="font-semibold text-slate-900"><%= dash_num(m[:cv]) %></p>
+          </div>
+          <div class="rounded bg-slate-50 p-3">
+            <p class="text-slate-500 text-xs uppercase tracking-wide">% &gt;15 / &gt;20 / &gt;25</p>
+            <p class="font-semibold text-slate-900"><%= dash_num(m[:over_15], '%') %> · <%= dash_num(m[:over_20], '%') %> · <%= dash_num(m[:over_25], '%') %></p>
+          </div>
+          <div class="rounded bg-slate-50 p-3">
+            <p class="text-slate-500 text-xs uppercase tracking-wide">Min méd · pts/min</p>
+            <p class="font-semibold text-slate-900"><%= dash_num(m[:minutes_avg]) %> · <%= dash_num(m[:ppm]) %></p>
+          </div>
+          <div class="rounded bg-slate-50 p-3">
+            <p class="text-slate-500 text-xs uppercase tracking-wide">Uso (FGA+FTA méd.)</p>
+            <p class="font-semibold text-slate-900"><%= dash_num(m[:usage]) %></p>
+          </div>
+          <div class="rounded bg-slate-50 p-3">
+            <p class="text-slate-500 text-xs uppercase tracking-wide">Tendência (L10 − temp.)</p>
+            <p class="font-semibold text-slate-900"><%= dash_num(m[:trend]) %></p>
+          </div>
+          <div class="rounded bg-slate-50 p-3">
+            <p class="text-slate-500 text-xs uppercase tracking-wide">% acima da linha</p>
+            <p class="font-semibold text-slate-900"><%= dash_num(m[:over_line_rate], '%') %> <span class="text-xs font-normal text-slate-500">(linha <%= m[:default_line] %>)</span></p>
+          </div>
+          <div class="rounded bg-slate-50 p-3">
+            <p class="text-slate-500 text-xs uppercase tracking-wide">Média casa</p>
+            <p class="font-semibold text-slate-900"><%= dash_num(m[:home_avg]) %> pts</p>
+          </div>
+          <div class="rounded bg-slate-50 p-3">
+            <p class="text-slate-500 text-xs uppercase tracking-wide">Média fora</p>
+            <p class="font-semibold text-slate-900"><%= dash_num(m[:away_avg]) %> pts</p>
+          </div>
+        </div>
+      </div>
+    <% end %>
+  </div>
+<% end %>
+
+<% if current_user.admin? && @players.any? %>
+  <div class="rounded-xl border border-amber-200 bg-amber-50/50 p-6 mb-10">
+    <h2 class="text-lg font-semibold text-amber-900 mb-4">Rodar análise IA</h2>
+    <%= form_with url: analyze_game_path(@game), method: :post, local: true, html: { class: 'space-y-4 max-w-xl' } do %>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Jogador</label>
+        <select name="player_id" required class="w-full rounded border border-slate-300 px-3 py-2 text-sm">
+          <% @players.each do |p| %>
+            <option value="<%= p.id %>"><%= p.name %> (<%= p.team %>)</option>
+          <% end %>
+        </select>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Tipo</label>
+          <select name="bet_type" class="w-full rounded border border-slate-300 px-3 py-2 text-sm">
+            <option value="points">points</option>
+            <option value="rebounds">rebounds</option>
+            <option value="assists">assists</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Linha</label>
+          <input type="text" name="line" placeholder="ex: 22.5" class="w-full rounded border border-slate-300 px-3 py-2 text-sm">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Odds</label>
+          <input type="text" name="odds" placeholder="ex: -110" class="w-full rounded border border-slate-300 px-3 py-2 text-sm">
+        </div>
+      </div>
+      <%= submit_tag 'Rodar análise IA', class: 'bg-violet-700 hover:bg-violet-600 text-white text-sm font-medium py-2 px-4 rounded cursor-pointer' %>
+    <% end %>
+  </div>
+<% end %>
+
+<div class="grid md:grid-cols-2 gap-8 mb-10">
+  <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-800 mb-4">Comentários</h2>
+    <ul class="space-y-3 mb-6 max-h-64 overflow-y-auto">
+      <% @comments.each do |c| %>
+        <li class="text-sm border-b border-slate-100 pb-3">
+          <span class="font-medium text-slate-700"><%= c.user.email %></span>
+          <span class="text-slate-400 text-xs"><%= c.created_at.strftime('%d/%m %H:%M') %></span>
+          <p class="text-slate-600 mt-1"><%= c.content %></p>
+        </li>
+      <% end %>
+      <% if @comments.empty? %>
+        <li class="text-slate-500 text-sm">Nenhum comentário ainda.</li>
+      <% end %>
+    </ul>
+    <%= form_with model: Comment.new, url: game_comments_path(@game), local: true, class: 'space-y-3' do |f| %>
+      <%= f.text_area :content, rows: 3, placeholder: 'Seu comentário…', class: 'w-full rounded border border-slate-300 px-3 py-2 text-sm' %>
+      <%= f.submit 'Publicar', class: 'bg-slate-800 hover:bg-slate-700 text-white text-sm py-2 px-4 rounded' %>
+    <% end %>
+  </div>
+
+  <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-800 mb-4">Registrar aposta</h2>
+    <% if @players.any? %>
+      <%= form_with model: Bet.new, url: game_bets_path(@game), local: true, class: 'space-y-3' do |f| %>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Jogador</label>
+          <%= f.select :player_id, @players.map { |p| ["#{p.name} (#{p.team})", p.id] }, {}, class: 'w-full rounded border border-slate-300 px-3 py-2 text-sm' %>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Tipo</label>
+          <%= f.select :bet_type, [['Pontos', 'points'], ['Rebotes', 'rebounds']], {}, class: 'w-full rounded border border-slate-300 px-3 py-2 text-sm' %>
+        </div>
+        <div>
+          <%= f.label :line, 'Linha', class: 'block text-sm font-medium text-slate-700 mb-1' %>
+          <%= f.text_field :line, class: 'w-full rounded border border-slate-300 px-3 py-2 text-sm' %>
+        </div>
+        <div>
+          <%= f.label :odds, 'Odds', class: 'block text-sm font-medium text-slate-700 mb-1' %>
+          <%= f.text_field :odds, class: 'w-full rounded border border-slate-300 px-3 py-2 text-sm' %>
+        </div>
+        <%= f.submit 'Salvar aposta', class: 'bg-emerald-700 hover:bg-emerald-600 text-white text-sm py-2 px-4 rounded' %>
+      <% end %>
+    <% else %>
+      <p class="text-slate-500 text-sm">Cadastre jogadores com stats neste jogo para apostar.</p>
+    <% end %>
+  </div>
+</div>
