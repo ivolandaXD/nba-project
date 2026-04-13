@@ -1,0 +1,57 @@
+<div class="mb-6">
+  <h1 class="text-2xl font-bold text-slate-800">Bilhetes jogados</h1>
+  <p class="text-sm text-slate-600 mt-1 max-w-3xl">
+    Lista global das props importadas ou registadas na tua conta. Usa as abas para filtrar:
+    <strong class="text-slate-800">Com resultado</strong> reúne bilhetes já marcados (vitória, derrota ou void) para escreveres notas e pedires
+    <strong class="text-slate-800">revisão com IA</strong> com base no box score quando existir.
+    <span class="block mt-1">Em cada cartão: badge <em>Ganhou/Perdida</em>, pernas com ✓/✗, <em>Pontuação</em> (se o box do jogo estiver importado) e <em>Ganhos (estimado)</em> = stake × odd na vitória.</span>
+  </p>
+  <p class="text-xs text-slate-500 mt-2">
+    Fecho em lote pelos prints (LAC×GSW 12/04, após o import):
+    <code class="rounded bg-slate-100 px-1 py-0.5 text-[11px] text-slate-800">bin/rails nba:set_lac_gsw_apr12_placed_suggestion_results</code>
+    · opcional
+    <code class="rounded bg-slate-100 px-1 py-0.5 text-[11px] text-slate-800">SYNC_LEGS=1</code>
+    para sincronizar pernas com o box score importado.
+  </p>
+</div>
+
+<% tab = @filter %>
+<% tabs = [
+  ['all', 'Todas', 'Todos os bilhetes'],
+  ['settled', 'Com resultado', 'Bilhetes fechados — avaliação e revisão IA'],
+  ['pending', 'Pendentes', 'Ainda por marcar (resultado do bilhete)']
+] %>
+
+<nav class="flex flex-wrap gap-2 mb-4" aria-label="Filtro de bilhetes">
+  <% tabs.each do |key, label, _title| %>
+    <% active = tab == key %>
+    <%= link_to label, placed_ai_suggestions_path(filter: key),
+          class: [
+            'inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium border transition',
+            active ? 'bg-violet-700 text-white border-violet-700 shadow-sm' : 'bg-white text-slate-700 border-slate-200 hover:border-violet-300 hover:bg-violet-50/40'
+          ].join(' ') %>
+  <% end %>
+</nav>
+
+<% section_title = tabs.find { |k, _, _| k == tab }&.last || 'Bilhetes' %>
+
+<% if @placed_ai_suggestions.empty? %>
+  <div class="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-slate-600">
+    <p class="font-medium text-slate-800">Nenhum bilhete neste filtro.</p>
+    <p class="text-sm mt-2">
+      <% if tab == 'settled' %>
+        Marca o resultado do bilhete na página do jogo ou aqui quando tiveres linhas fechadas.
+      <% elsif tab == 'pending' %>
+        Todas as entradas já têm resultado definido, ou ainda não importaste bilhetes.
+      <% else %>
+        Importa bilhetes com as tasks <code class="text-xs bg-slate-100 px-1 rounded">nba:import_*</code> ou regista-os na base.
+      <% end %>
+    </p>
+  </div>
+<% else %>
+  <%= render 'web/games/placed_ai_suggestions',
+        placed_ai_suggestions: @placed_ai_suggestions,
+        section_title: section_title,
+        show_game_context: true,
+        suppress_intro: true %>
+<% end %>

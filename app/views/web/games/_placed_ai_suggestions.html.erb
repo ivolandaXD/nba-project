@@ -1,0 +1,237 @@
+<% suggestions = local_assigns.fetch(:placed_ai_suggestions, []) %>
+<% if suggestions.present? %>
+<% kind_labels = {
+  'single' => 'Simples',
+  'parlay' => 'Criar aposta (parlay)',
+  'dupla' => 'Dupla',
+  'tripla' => 'Tripla'
+} %>
+<div class="rounded-xl border border-violet-300 bg-violet-50/90 p-4 shadow-sm mb-6">
+  <h2 class="text-lg font-semibold text-violet-950 mb-1"><%= local_assigns[:section_title].presence || 'Sugestões da IA · bilhetes que você jogou' %></h2>
+  <% unless local_assigns[:suppress_intro] %>
+    <p class="text-xs text-violet-900/85 mb-3">
+      Registro das props alinhadas às sugestões. Depois do jogo, marque <strong class="text-emerald-800">✓ bateu</strong>,
+      <strong class="text-red-800">✗ não bateu</strong>, <strong class="text-slate-600">anulado</strong> (void na casa) ou <em>pendente</em>.
+      Opcional: escreva uma <strong>avaliação individual</strong> (o que você viu no jogo / leitura), clique <strong>Salvar nota</strong> e depois <strong>Revisão com IA</strong> (a revisão usa a última nota salva + bilhete + box score quando existir).
+      <span class="block mt-1 text-amber-900/90">O <strong>score interno da IA</strong> (Central de IA) não é probabilidade implícita da odd nem garantia de acerto. Parlays acumulam risco e correlação.</span>
+    </p>
+  <% end %>
+  <ul class="space-y-4">
+    <% suggestions.each do |s| %>
+      <% border =
+           case s.result
+           when 'win' then 'border-emerald-300 bg-emerald-50/50'
+           when 'loss' then 'border-red-300 bg-red-50/40'
+           when 'void' then 'border-slate-300 bg-slate-100/60'
+           else 'border-violet-200 bg-white'
+           end %>
+      <li class="rounded-lg border p-3 text-sm <%= border %>">
+        <div class="flex flex-wrap items-start justify-between gap-2 mb-2">
+          <div class="min-w-0">
+            <p class="text-sm font-semibold text-slate-900">
+              <%= kind_labels[s.slip_kind] || s.slip_kind %>
+              <% if s.stake_brl.present? %>
+                <span class="text-slate-600 font-normal"> R$ <%= number_with_precision(s.stake_brl, precision: 2) %></span>
+              <% end %>
+            </p>
+            <% if s.decimal_odds.present? %>
+              <p class="text-xs text-slate-500 tabular-nums mt-0.5">
+                <%= s.slip_kind == 'single' ? 'Odds' : 'Odds combinadas' %>
+                @ <%= number_with_precision(s.decimal_odds, precision: 2, strip_insignificant_zeros: true) %>
+              </p>
+            <% end %>
+          </div>
+          <div class="shrink-0"><%= placed_ai_bet_status_badge(s) %></div>
+        </div>
+
+        <div class="mb-2">
+          <div class="min-w-0">
+            <% if local_assigns[:show_game_context] %>
+              <% if s.game.present? %>
+                <p class="text-[11px] text-slate-600 mb-1">
+                  <%= link_to game_path(s.game), class: 'font-medium text-violet-800 hover:underline' do %>
+                    <%= s.game.away_team %> @ <%= s.game.home_team %>
+                    <% if s.game.game_date.present? %>
+                      <span class="text-slate-500 font-normal"> · <%= s.game.game_date.strftime('%d/%m/%Y') %></span>
+                    <% end %>
+                  <% end %>
+                </p>
+              <% else %>
+                <p class="text-[11px] text-amber-900 mb-1">Sem jogo associado (multi-jogo ou jogo removido).</p>
+              <% end %>
+            <% elsif s.game.present? %>
+              <p class="text-[11px] text-slate-600 mb-1">
+                <%= link_to game_path(s.game), class: 'font-medium text-violet-800 hover:underline' do %>
+                  <%= s.game.home_team %> — <%= s.game.away_team %>
+                <% end %>
+              </p>
+            <% end %>
+            <% if s.game.present? && game_box_score_pill(s.game).present? %>
+              <div class="flex flex-wrap items-center gap-2 mb-1">
+                <%= game_box_score_pill(s.game) %>
+              </div>
+            <% end %>
+            <p class="font-semibold text-slate-900 leading-snug"><%= s.description %></p>
+            <% if s.placed_ai_suggestion_legs.any? %>
+              <% if s.weak_ticket_matching? %>
+                <p class="mt-1 text-[11px] font-medium text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                  Matching automático fraco em uma ou mais pernas (nome/evento). A revisão pós-jogo com IA deve ser lida com menor confiança.
+                </p>
+              <% end %>
+              <div class="mt-2 rounded border border-violet-200 bg-white/80 overflow-x-auto">
+                <table class="min-w-full text-[11px] text-left text-slate-700">
+                  <thead class="bg-violet-100/80 text-violet-950 uppercase tracking-wide">
+                    <tr>
+                      <th class="px-2 py-1">#</th>
+                      <th class="px-1 py-1 w-6" title="Resultado da perna">·</th>
+                      <th class="px-2 py-1">Perna</th>
+                      <th class="px-2 py-1">Linha (bilhete)</th>
+                      <th class="px-2 py-1">Match</th>
+                      <th class="px-2 py-1">Resultado</th>
+                      <th class="px-2 py-1">Real / Δ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% s.placed_ai_suggestion_legs.ordered.each do |leg| %>
+                      <% st = leg.result_status %>
+                      <% st_label =
+                           case st
+                           when 'hit' then '✓ bateu'
+                           when 'miss' then '✗ não'
+                           when 'push' then '= push'
+                           when 'void' then '○ void'
+                           else '… pendente'
+                           end %>
+                      <tr class="border-t border-violet-100">
+                        <td class="px-2 py-1 tabular-nums"><%= leg.leg_index + 1 %></td>
+                        <td class="px-1 py-1 text-center text-sm leading-none"><%= placed_leg_result_icon(leg) %></td>
+                        <td class="px-2 py-1">
+                          <span class="font-medium text-slate-900"><%= leg.player&.name.presence || '(jogador não resolvido)' %></span>
+                          <span class="text-slate-500"> · <%= leg.market_type %> <%= leg.selection_type %> </span>
+                        </td>
+                        <td class="px-2 py-1 tabular-nums font-medium text-slate-900"><%= placed_leg_threshold_plus(leg) %></td>
+                        <td class="px-2 py-1">
+                          <%= leg.match_method || '—' %>
+                          <% if leg.matched_confidence.present? %>
+                            <span class="text-slate-500"> · <%= number_with_precision(leg.matched_confidence, precision: 2) %></span>
+                          <% end %>
+                        </td>
+                        <td class="px-2 py-1 font-medium"><%= st_label %></td>
+                        <td class="px-2 py-1 tabular-nums">
+                          <% if leg.actual_value.present? %>
+                            <%= number_with_precision(leg.actual_value, precision: 1, strip_insignificant_zeros: true) %>
+                            <% if leg.delta_vs_line.present? %>
+                              <span class="text-slate-500"> (Δ <%= number_with_precision(leg.delta_vs_line, precision: 1) %>)</span>
+                            <% end %>
+                          <% else %>
+                            —
+                          <% end %>
+                        </td>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                </table>
+              </div>
+            <% elsif s.legs.is_a?(Array) && s.legs.any? %>
+              <ul class="mt-2 space-y-1 text-xs text-slate-600 list-disc list-inside">
+                <% s.legs.each do |leg| %>
+                  <% h = leg.is_a?(Hash) ? leg.stringify_keys : {} %>
+                  <li>
+                    <% if h['event'].present? %>
+                      <span class="text-slate-500"><%= h['event'] %></span>
+                      <span class="text-slate-400"> · </span>
+                    <% end %>
+                    <span class="font-medium text-slate-800"><%= h['player'] %></span>
+                    — <%= h['market'] %> <strong class="tabular-nums"><%= h['line'] %></strong>
+                  </li>
+                <% end %>
+              </ul>
+            <% end %>
+          </div>
+        </div>
+
+        <p class="text-[11px] text-slate-500 mb-2">
+          Marca o <strong>resultado do bilhete</strong> (como na casa). As pernas ✓/✗ vêm do box score importado quando existir; o badge Ganhou/Perdida reflete o estado do bilhete.
+        </p>
+        <div class="flex flex-wrap gap-2 mb-2">
+          <%= button_to '✓ Bateu',
+              placed_ai_suggestion_path(s),
+              method: :patch,
+              params: { placed_ai_suggestion: { result: 'win' } },
+              class: 'bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-medium py-2 px-3 rounded cursor-pointer' %>
+          <%= button_to '✗ Não bateu',
+              placed_ai_suggestion_path(s),
+              method: :patch,
+              params: { placed_ai_suggestion: { result: 'loss' } },
+              class: 'bg-red-700 hover:bg-red-600 text-white text-xs font-medium py-2 px-3 rounded cursor-pointer' %>
+          <%= button_to 'Pendente',
+              placed_ai_suggestion_path(s),
+              method: :patch,
+              params: { placed_ai_suggestion: { result: 'pending' } },
+              class: 'bg-slate-500 hover:bg-slate-600 text-white text-xs font-medium py-2 px-3 rounded cursor-pointer' %>
+          <%= button_to 'Anulado',
+              placed_ai_suggestion_path(s),
+              method: :patch,
+              params: { placed_ai_suggestion: { result: 'void' } },
+              class: 'bg-slate-400 hover:bg-slate-500 text-white text-xs font-medium py-2 px-3 rounded cursor-pointer' %>
+        </div>
+
+        <% ret = s.implied_return_brl %>
+        <div class="mt-1 pt-2 border-t border-slate-200/90 flex flex-wrap justify-between gap-x-4 gap-y-1 text-[11px] text-slate-600">
+          <span class="font-mono"><% if s.external_bet_id.present? %>ID: <%= s.external_bet_id %><% else %>—<% end %></span>
+          <span class="tabular-nums"><%= s.created_at.strftime('%d/%m/%Y - %H:%M') %></span>
+        </div>
+        <div class="flex flex-wrap justify-between items-baseline gap-2 mt-1.5 mb-1">
+          <span class="text-sm font-semibold text-slate-900">Ganhos (estimado)</span>
+          <span class="text-base font-bold text-slate-900 tabular-nums">
+            <% if ret.nil? %>
+              <span class="text-xs font-normal text-slate-500">Marca o resultado do bilhete</span>
+            <% else %>
+              R$ <%= number_with_precision(ret, precision: 2) %>
+            <% end %>
+          </span>
+        </div>
+
+        <div class="mt-3 pt-3 border-t border-violet-200/80 space-y-2">
+          <p class="text-xs font-semibold text-violet-900">Avaliação individual</p>
+          <%= form_with model: s, url: placed_ai_suggestion_path(s), method: :patch, local: true, class: 'space-y-2' do |f| %>
+            <%= f.hidden_field :result %>
+            <%= f.text_area :evaluation_note,
+                rows: 3,
+                placeholder: 'Ex.: linha agressiva, minutos, blowout, lesão não refletida nos dados, leitura ao vivo…',
+                class: 'w-full rounded border border-violet-200 bg-white px-2 py-1.5 text-xs text-slate-800' %>
+            <%= f.submit 'Salvar nota',
+                class: 'bg-violet-700 hover:bg-violet-600 text-white text-xs font-medium py-1.5 px-3 rounded cursor-pointer' %>
+          <% end %>
+          <%= button_to 'Gerar revisão com IA (usa última nota salva)',
+              ai_post_mortem_placed_ai_suggestion_path(s),
+              method: :post,
+              class: 'bg-indigo-700 hover:bg-indigo-600 text-white text-xs font-medium py-1.5 px-3 rounded cursor-pointer',
+              data: { confirm: 'Usa OPENAI_API_KEY. Continuar?' } %>
+          <% if s.ai_post_mortem.present? || s.ai_post_mortem_parse_error.present? %>
+            <div class="rounded-md border border-indigo-100 bg-white/90 px-2 py-2 mt-2">
+              <p class="text-xs font-semibold text-indigo-950 mb-1 flex flex-wrap items-center gap-2">
+                <span>Revisão pós-jogo (IA)</span>
+                <% if s.ai_post_mortem_at.present? %>
+                  <span class="font-normal text-slate-500">· <%= s.ai_post_mortem_at.strftime('%d/%m %H:%M') %></span>
+                <% end %>
+                <% if s.ai_post_mortem_structured_contract_ok? %>
+                  <span class="ml-auto text-[10px] font-semibold uppercase tracking-wide text-emerald-900 bg-emerald-100 border border-emerald-200 rounded px-2 py-0.5">Contrato estruturado OK</span>
+                <% elsif s.ai_post_mortem_parse_error.present? %>
+                  <span class="ml-auto text-[10px] font-semibold uppercase tracking-wide text-amber-950 bg-amber-100 border border-amber-200 rounded px-2 py-0.5">Texto (fallback)</span>
+                <% elsif s.ai_post_mortem.present? %>
+                  <span class="ml-auto text-[10px] font-semibold uppercase tracking-wide text-slate-700 bg-slate-100 border border-slate-200 rounded px-2 py-0.5">Texto (legado)</span>
+                <% end %>
+              </p>
+              <% if s.ai_post_mortem_parse_error.present? %>
+                <p class="text-[11px] text-amber-900 mb-2">Erro de validação / parse: <%= s.ai_post_mortem_parse_error %></p>
+              <% end %>
+              <div class="text-xs text-slate-800 whitespace-pre-wrap leading-relaxed"><%= s.ai_post_mortem %></div>
+            </div>
+          <% end %>
+        </div>
+      </li>
+    <% end %>
+  </ul>
+</div>
+<% end %>

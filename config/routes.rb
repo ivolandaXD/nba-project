@@ -59,5 +59,11 @@ Rails.application.routes.draw do
     get 'data_hub', to: 'data_hub#index', as: :data_hub
     get 'ai_hub', to: 'ai_hub#index', as: :ai_hub
     post 'ai_hub/analyze', to: 'ai_hub#analyze', as: :ai_hub_analyze
+
+    resources :placed_ai_suggestions, only: %i[index update] do
+      member do
+        post :ai_post_mortem
+      end
+    end
   end
 end

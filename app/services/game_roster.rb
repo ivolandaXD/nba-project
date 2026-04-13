@@ -38,9 +38,14 @@ class GameRoster
     rel = Player.where('UPPER(TRIM(team)) = ?', abbr).order(:name)
     return rel if rel.exists?
 
-    Player.joins(:player_season_stats)
-          .where(player_season_stats: { season: @season, team_abbr: abbr })
-          .distinct
-          .order(:name)
+    ids =
+      Player.joins(:player_season_stats)
+            .where(player_season_stats: { season: @season, team_abbr: abbr })
+            .distinct
+            .pluck(:id)
+
+    return Player.none if ids.blank?
+
+    Player.where(id: ids).order(:name)
   end
 end

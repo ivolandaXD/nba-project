@@ -190,4 +190,23 @@ namespace :nba do
     puts ''
     puts 'Próximo passo se algo falhar: Central de Dados (web) + nba:sync_context_for_ai'
   end
+
+  desc <<-DESC.squish
+    Snapshot de props para todos os jogos do dia: PSS, split vs adversário, L10 (PTS/3PM/REB/AST).
+    Usa Game.game_date (mesma data que o scoreboard ESPN grava). DATE=YYYY-MM-DD (default: hoje).
+    Com OUT=caminho grava UTF-8 em arquivo; sem OUT imprime no terminal.
+    Ex.: DATE=2026-04-10 OUT=prop_analysis_day_2026-04-10.txt bin/rails nba:prop_snapshot_day
+  DESC
+  task prop_snapshot_day: :environment do
+    date = ENV['DATE'].present? ? Date.parse(ENV['DATE']) : Date.current
+    path = ENV['OUT'].to_s.strip.presence
+    if path
+      File.open(path, 'w:UTF-8') do |f|
+        PropDaySnapshot.call(date: date, out: f)
+      end
+      puts "Escrito: #{path} (#{File.size(path)} bytes)"
+    else
+      PropDaySnapshot.call(date: date, out: $stdout)
+    end
+  end
 end

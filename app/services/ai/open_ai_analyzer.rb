@@ -51,7 +51,7 @@ module Ai
         model: @model,
         messages: [
           { role: 'system', content: system_prompt },
-          { role: 'user', content: "Dados JSON:\n#{JSON.pretty_generate(@input_hash.deep_stringify_keys)}" }
+          { role: 'user', content: build_user_message }
         ],
         temperature: 0.35
       }
@@ -79,9 +79,23 @@ module Ai
 
       raw = text.to_s.strip
       structured = parse_structured(raw, use_json: use_json)
-      structured = normalize_structured(structured) if structured.present?
+      unless postgame_mode?
+        structured = normalize_structured(structured) if structured.present?
+      end
+
       display =
-        if structured.present?
+        if structured.present? && postgame_mode?
+          pr = StructuredOutputs::PostgameReview.parse(structured)
+          if pr[:ok]
+            PostMortemPresenter.to_text(pr[:data])
+          else
+            <<~TXT.strip
+              Revisão recebida, mas o JSON não passou na validação mínima (#{pr[:errors].join(', ')}).
+              Trecho bruto (para auditoria):
+              #{raw}
+            TXT
+          end
+        elsif structured.present?
           s = structured.stringify_keys
           if portfolio_mode? || professional_mode? || s['prop_suggestions'].present?
             format_display_professional(s)
@@ -209,14 +223,37 @@ module Ai
 
     private
 
-    def professional_mode?
-      m = @input_hash[:analysis_mode] || @input_hash['analysis_mode']
-      m.to_s == 'points_props_pro'
+    # Primeiro bloco: JSON do modelo (sem chaves só de anexo). Depois, opcionalmente:
+    # `external_game_context` (JSON) e/ou `external_context_text` (texto longo), alinhado ao pacote play-in.
+    def build_user_message
+      raw = @input_hash.deep_stringify_keys
+      ext_ctx = raw.delete('external_game_context')
+      ext_txt = raw.delete('external_context_text')
+      msg = +"Dados JSON:\n#{JSON.pretty_generate(raw)}"
+      if ext_ctx.present?
+        msg << "\n\n---\nexternal_game_context (snapshot curado; pode estar desatualizado):\n"
+        msg << JSON.pretty_generate(ext_ctx.is_a?(Hash) ? ext_ctx : { 'value' => ext_ctx })
+      end
+      if ext_txt.present?
+        msg << "\n\n---\nContexto externo (texto):\n#{ext_txt}"
+      end
+      msg
+    end
+
+    def raw_analysis_mode
+      (@input_hash[:analysis_mode] || @input_hash['analysis_mode']).to_s
+    end
+
+    def postgame_mode?
+      AnalysisModes.postgame_review?(raw_analysis_mode)
     end
 
     def portfolio_mode?
-      m = @input_hash[:analysis_mode] || @input_hash['analysis_mode']
-      m.to_s == 'props_portfolio'
+      AnalysisModes.pregame_portfolio?(raw_analysis_mode)
+    end
+
+    def professional_mode?
+      AnalysisModes.pregame_single_market_pro?(raw_analysis_mode, @input_hash)
     end
 
     def normalize_structured(h)
@@ -224,100 +261,11 @@ module Ai
     end
 
     def system_prompt
-      return portfolio_prompt if portfolio_mode?
-      return professional_points_prompt if professional_mode?
+      return PromptCatalog.postgame_review_system if postgame_mode?
+      return PromptCatalog.pregame_portfolio_system if portfolio_mode?
+      return PromptCatalog.pregame_single_market_pro_system if professional_mode?
 
-      legacy_points_prompt
-    end
-
-    def portfolio_prompt
-      (<<~PROMPT).squish
-        Você é um analista NBA de player props. O JSON traz "markets_data": por mercado (points, rebounds, assists, threes, steals, blocks, turnovers)
-        com médias de temporada, últimos 5 e 10 jogos, vs adversário quando existir, desvio/consistência e minutos.
-        "primary_market" e "primary_line" são a aposta de referência (se houver linha); "odds" é opcional.
-        Use "manual_game_context", "opponent_split", "opponent_team_stats" e notas do usuário quando existirem.
-
-        Objetivo: NÃO depender de uma única aposta fechada. Entregue 3 a 6 ideias de props (ex.: 20+ PTS, 2+ 3PM, 8+ REB, 4+ AST)
-        coerentes com os números, cada uma com "estimated_hit_percent" (percentual ou faixa curta) e "based_on" citando explicitamente
-        média temporada, L5, L10 e vs adversário quando disponíveis.
-
-        Inclua "parlay_note": lembre que num same-game parlay os mercados não são independentes (correlação positiva entre PTS e 3PM, etc.).
-
-        Responda em JSON com chaves:
-        "statistical_edge", "context_impact", "true_probability_percent", "ev_assessment" (use odds se existirem; senão texto sobre valor qualitativo),
-        "risk_adjusted" (baixo, medio ou alto — sem acento),
-        "final_reading", "recommendation" (OVER, UNDER, PASS ou NEUTRO conforme primary_line),
-        "parlay_note",
-        "prop_suggestions": array de objetos {"market","idea","estimated_hit_percent","based_on"},
-        e chaves legadas: "scenario_summary", "trend_direction", "line_hit_probability", "probability_estimate", "value_bet", "risk_level", "justification".
-        Use "media" e "medio" sem acento onde aplicável.
-      PROMPT
-    end
-
-    def professional_points_prompt
-      (<<~PROMPT).squish
-        Você é um analista profissional de apostas NBA especializado em player props (pontos).
-
-        Sua análise deve combinar:
-        1) Dados estatísticos (probability_over, implied_probability, ev, adjusted_probability, confidence_score_model, tendência, consistência).
-        2) Contexto de jogo em manual_game_context / injuries / pace / is_back_to_back / is_home / spread / opponent_defense_rank_vs_position / returning_players.
-
-        Analise:
-        Estatística: probabilidade real vs implícita, EV (use o campo "ev" quando existir), tendência recente, consistência (std_dev_points, coefficient_of_variation).
-        Contexto: desfalques e retornos (impacto em uso ofensivo), matchup defensivo vs posição, ritmo (pace), risco de blowout (|spread| alto), fadiga (back-to-back).
-
-        Regras: contexto muito negativo reduz confiança; muito positivo aumenta; EV positivo com contexto ruim pode justificar PASS.
-        Seja técnico e direto; cite números do JSON.
-
-        Responda em JSON com exatamente estas chaves (strings):
-        "statistical_edge",
-        "context_impact",
-        "true_probability_percent" (ex.: "58%" ou intervalo curto),
-        "ev_assessment" (texto curto referindo EV do input),
-        "risk_adjusted" (baixo, medio ou alto — sem acento: medio),
-        "final_reading" (síntese),
-        "recommendation" (uma de: OVER, UNDER, PASS — maiúsculas),
-
-        e também as chaves legadas para compatibilidade:
-        "scenario_summary" (pode repetir resumo do edge),
-        "trend_direction" (alta, queda ou neutro),
-        "line_hit_probability" (baixa, media ou alta — chance percebida de bater over na linha),
-        "probability_estimate" (igual a line_hit_probability),
-        "value_bet" (sim ou nao),
-        "risk_level" (igual a risk_adjusted: baixo, medio, alto),
-        "justification" (texto objetivo).
-
-        Use "media" e "medio" sem acento nos enums em português onde aplicável.
-      PROMPT
-    end
-
-    def legacy_points_prompt
-      (<<~PROMPT).squish
-        Você é um analista esportivo especializado em NBA, focado em apostas de pontos (player props over/under).
-
-        Analise os dados do jogador considerando:
-        - Média da temporada vs forma recente (últimos 5 e 10 jogos)
-        - Frequência de jogos acima da linha (over_line_rate) e faixas 15/20/25 pontos
-        - Consistência: desvio padrão (std_dev_points) e coeficiente de variação
-        - Volume: minutos médios, FGA e FTA médios
-        - Histórico contra o adversário (vs_opponent_avg_points, opponent_split)
-        - Contexto casa/fora (home_avg_points, away_avg_points)
-        - Médias do time adversário na liga (opponent_team_stats), se existirem
-        - confidence_score_model no JSON é um score interno 0–100; use como pista, não como única verdade
-
-        Responda em JSON com exatamente estas chaves (strings):
-        "scenario_summary" (texto),
-        "trend_direction" (uma de: alta, queda, neutro),
-        "line_hit_probability" (uma de: baixa, media, alta) — chance de o jogador superar a linha de pontos (over),
-        "probability_estimate" (repetir o mesmo valor que line_hit_probability para compatibilidade),
-        "value_bet" (uma de: sim, nao),
-        "risk_level" (uma de: baixo, medio, alto),
-        "justification" (texto objetivo citando números do input).
-
-        Use "media" e "medio" sem acento nos enums.
-        Seja objetivo; evite frases genéricas.
-        Se existir "user_note", incorpore na justificativa.
-      PROMPT
+      PromptCatalog.pregame_single_market_legacy_system
     end
 
     def parse_structured(raw, use_json:)

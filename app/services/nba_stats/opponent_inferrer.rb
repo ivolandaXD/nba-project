@@ -2,6 +2,8 @@
 module NbaStats
   class OpponentInferrer
     ALIASES = {
+      # stats.nba.com / team_codes usam GSW; placares e feeds externos costumam mandar GS.
+      'GS' => 'GSW',
       'WSH' => 'WAS',
       'WAS' => 'WAS',
       'BRK' => 'BKN',

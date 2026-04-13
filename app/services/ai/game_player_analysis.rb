@@ -65,6 +65,8 @@ module Ai
           )
         else
           base.merge(
+            analysis_mode: Ai::AnalysisModes::PREGAME_SINGLE_MARKET,
+            legacy_analysis_mode: 'legacy_single_market',
             line: line_val,
             odds: odds.presence,
             confidence_score_model: computed,
@@ -81,6 +83,7 @@ module Ai
     end
 
     def self.run_openai_and_persist(game:, player:, input:, computed:, confidence_score: nil)
+      PlayIn2026Context.merge_into_input!(input, game)
       ai = OpenAiAnalyzer.call(input)
       return { ok: false, error: ai.error, prediction: nil } unless ai.success?
 
@@ -138,7 +141,8 @@ module Ai
       end
 
       {
-        analysis_mode: 'props_portfolio',
+        analysis_mode: Ai::AnalysisModes::PREGAME_PORTFOLIO,
+        legacy_analysis_mode: 'props_portfolio',
         player: { id: player.id, name: player.name, team: player.team },
         primary_market: primary_stat.to_s,
         primary_line: line_val,
@@ -161,11 +165,22 @@ module Ai
     def self.build_numeric_meta(input, computed:, decision_score:)
       h = input.deep_stringify_keys
       {
+        'canonical_analysis_mode' => h['analysis_mode'],
         'probability_over_percent' => h['probability_over_percent'],
         'implied_probability_percent' => h['implied_probability_percent'],
         'adjusted_probability_percent' => h['adjusted_probability_percent'],
+        'model_confidence_score' => computed,
+        'estimated_hit_probability' => h['adjusted_probability'],
+        'market_implied_probability' => h['implied_probability'],
+        'edge_percent_points' =>
+          (
+            if h['adjusted_probability'].present? && h['implied_probability'].present?
+              ((h['adjusted_probability'].to_f - h['implied_probability'].to_f) * 100.0).round(4)
+            end
+          ),
         'ev' => h['ev'],
         'ev_base' => h['ev_base'],
+        'ev_estimate' => h['ev'],
         'context_modifier_total_percent_points' => h['context_modifier_total_percent_points'],
         'context_modifiers_applied' => h['context_modifiers_applied'],
         'confidence_score_model' => computed,
@@ -236,7 +251,8 @@ module Ai
       )
 
       core.merge!(
-        analysis_mode: 'points_props_pro',
+        analysis_mode: Ai::AnalysisModes::PREGAME_SINGLE_MARKET,
+        legacy_analysis_mode: 'points_props_pro',
         manual_game_context: manual_json,
         injuries: manual[:injuries],
         returning_players: manual[:returning_players],

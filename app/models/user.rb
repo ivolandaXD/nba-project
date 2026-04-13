@@ -9,6 +9,7 @@ class User < ApplicationRecord
   has_many :comments, dependent: :destroy
   has_many :bets, dependent: :destroy
   has_many :alerts, dependent: :destroy
+  has_many :placed_ai_suggestions, dependent: :destroy
 
   validates :role, inclusion: { in: ROLES }
 

@@ -30,6 +30,11 @@ module Web
 
       @comments = @game.comments.includes(:user).order(created_at: :desc)
       @my_bets = current_user.bets.where(game_id: @game.id).includes(:player).order(created_at: :desc)
+      @placed_ai_suggestions =
+        current_user.placed_ai_suggestions
+                    .where(game_id: @game.id)
+                    .includes(placed_ai_suggestion_legs: :player)
+                    .order(created_at: :desc)
     end
 
     def fetch_odds

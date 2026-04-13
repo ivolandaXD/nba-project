@@ -310,4 +310,50 @@ module Web::ApplicationHelper
       'bg-slate-100 text-slate-800'
     end
   end
+
+  # Bilhetes colocados (PlacedAiSuggestion) — UI tipo casa de apostas
+  def placed_ai_bet_status_badge(placed)
+    label, cls =
+      case placed.result
+      when 'win' then ['Ganhou', 'bg-emerald-600 text-white']
+      when 'loss' then ['Perdida', 'bg-red-600 text-white']
+      when 'void' then ['Anulada', 'bg-slate-500 text-white']
+      else ['Pendente', 'bg-amber-500 text-white']
+      end
+    content_tag(:span, label,
+                class: "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold #{cls}")
+  end
+
+  def game_box_score_pill(game)
+    return if game.blank?
+
+    pair = game.box_score_home_away_points
+    return if pair.blank?
+
+    home_pts, away_pts = pair
+    content_tag(:span, "Pontuação: #{home_pts}-#{away_pts}",
+                class: 'inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700')
+  end
+
+  def placed_leg_threshold_plus(leg)
+    return '—' if leg.line_value.blank?
+
+    if leg.selection_type.to_s == 'under'
+      v = BigDecimal(leg.line_value.to_s)
+      return "Menos #{v.to_s('F').sub(/\.0$/, '')}"
+    end
+
+    v = BigDecimal(leg.line_value.to_s)
+    "#{(v + BigDecimal('0.5')).ceil}+"
+  end
+
+  def placed_leg_result_icon(leg)
+    case leg.result_status
+    when 'hit' then content_tag(:span, '✓', class: 'text-emerald-600 font-bold', title: 'Bateu')
+    when 'miss' then content_tag(:span, '✗', class: 'text-red-600 font-bold', title: 'Não bateu')
+    when 'push' then content_tag(:span, '=', class: 'text-amber-700 font-bold', title: 'Push')
+    when 'void' then content_tag(:span, '○', class: 'text-slate-600 font-bold', title: 'Void')
+    else content_tag(:span, '…', class: 'text-slate-400 font-bold', title: 'Pendente')
+    end
+  end
 end

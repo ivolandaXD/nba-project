@@ -70,7 +70,7 @@ RSpec.describe PlayerMetrics::Calculator do
     it 'returns for_ai and scorer_inputs' do
       Rails.cache.clear
       payload = described_class.cached_payload(player, stat_key: :points, line: 15, opponent_team: 'BOS')
-      expect(payload[:for_ai]).to include(:season_avg, :coefficient_of_variation, :streak_status)
+      expect(payload[:for_ai]).to include(:season_avg_points, :coefficient_of_variation, :streak_status)
       expect(payload[:scorer_inputs]).to include(:trend_last_10, :streak_status)
     end
   end

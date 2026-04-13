@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema.define(version: 2026_04_11_120000) do
+ActiveRecord::Schema.define(version: 2026_04_13_120001) do
 
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
@@ -97,6 +97,63 @@ ActiveRecord::Schema.define(version: 2026_04_11_120000) do
     t.index ["game_id", "market_type", "source"], name: "index_odds_snapshots_on_game_id_and_market_type_and_source"
     t.index ["game_id"], name: "index_odds_snapshots_on_game_id"
     t.index ["player_id"], name: "index_odds_snapshots_on_player_id"
+  end
+
+  create_table "placed_ai_suggestion_legs", force: :cascade do |t|
+    t.bigint "placed_ai_suggestion_id", null: false
+    t.integer "leg_index", null: false
+    t.string "sport", default: "nba", null: false
+    t.string "event_label"
+    t.bigint "game_id"
+    t.bigint "player_id"
+    t.string "team_abbr"
+    t.string "market_type", null: false
+    t.string "selection_type"
+    t.decimal "line_value", precision: 10, scale: 2
+    t.decimal "odds_decimal", precision: 12, scale: 4
+    t.string "result_status", default: "pending", null: false
+    t.decimal "actual_value", precision: 12, scale: 3
+    t.decimal "delta_vs_line", precision: 12, scale: 3
+    t.decimal "model_confidence_score", precision: 8, scale: 3
+    t.decimal "estimated_hit_probability", precision: 8, scale: 5
+    t.decimal "market_implied_probability", precision: 8, scale: 5
+    t.decimal "edge_percent_points", precision: 10, scale: 4
+    t.decimal "ev_estimate", precision: 12, scale: 5
+    t.decimal "matched_confidence", precision: 6, scale: 4
+    t.string "match_method"
+    t.jsonb "source_payload", default: {}, null: false
+    t.jsonb "metadata", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["game_id"], name: "index_placed_ai_suggestion_legs_on_game_id"
+    t.index ["match_method"], name: "index_placed_ai_suggestion_legs_on_match_method"
+    t.index ["placed_ai_suggestion_id", "leg_index"], name: "index_pasl_on_placed_and_leg_index", unique: true
+    t.index ["placed_ai_suggestion_id"], name: "index_placed_ai_suggestion_legs_on_placed_ai_suggestion_id"
+    t.index ["player_id"], name: "index_placed_ai_suggestion_legs_on_player_id"
+    t.index ["result_status"], name: "index_placed_ai_suggestion_legs_on_result_status"
+  end
+
+  create_table "placed_ai_suggestions", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.bigint "game_id"
+    t.string "external_bet_id"
+    t.string "slip_kind", default: "single", null: false
+    t.text "description", null: false
+    t.jsonb "legs", default: [], null: false
+    t.decimal "decimal_odds", precision: 10, scale: 3
+    t.decimal "stake_brl", precision: 10, scale: 2
+    t.string "result", default: "pending", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.text "evaluation_note"
+    t.text "ai_post_mortem"
+    t.datetime "ai_post_mortem_at"
+    t.jsonb "ai_post_mortem_structured", default: {}, null: false
+    t.text "ai_post_mortem_parse_error"
+    t.index ["game_id"], name: "index_placed_ai_suggestions_on_game_id"
+    t.index ["user_id", "external_bet_id"], name: "index_placed_ai_suggestions_on_user_id_and_external_bet_id", unique: true, where: "((external_bet_id IS NOT NULL) AND ((external_bet_id)::text <> ''::text))"
+    t.index ["user_id", "game_id"], name: "index_placed_ai_suggestions_on_user_id_and_game_id"
+    t.index ["user_id"], name: "index_placed_ai_suggestions_on_user_id"
   end
 
   create_table "player_game_stats", force: :cascade do |t|
@@ -255,6 +312,11 @@ ActiveRecord::Schema.define(version: 2026_04_11_120000) do
   add_foreign_key "comments", "users"
   add_foreign_key "odds_snapshots", "games"
   add_foreign_key "odds_snapshots", "players"
+  add_foreign_key "placed_ai_suggestion_legs", "games"
+  add_foreign_key "placed_ai_suggestion_legs", "placed_ai_suggestions"
+  add_foreign_key "placed_ai_suggestion_legs", "players"
+  add_foreign_key "placed_ai_suggestions", "games"
+  add_foreign_key "placed_ai_suggestions", "users"
   add_foreign_key "player_game_stats", "games"
   add_foreign_key "player_game_stats", "players"
   add_foreign_key "player_opponent_splits", "players"
